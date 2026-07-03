@@ -1,0 +1,24 @@
+{
+  "name": "worklens_frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "vitest run",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "vue": "^3.5.18"
+  },
+  "devDependencies": {
+    "@vue/test-utils": "^2.4.6",
+    "typescript": "~6.0.2",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "jsdom": "^26.1.0",
+    "vite": "^8.1.1",
+    "vitest": "^3.2.4",
+    "vue-tsc": "^3.0.5"
+  }
+}

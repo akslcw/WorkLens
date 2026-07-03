@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: worklens-backend
+  datasource:
+    url: jdbc:postgresql://${WORKLENS_DB_HOST:127.0.0.1}:${WORKLENS_DB_PORT:5432}/${WORKLENS_DB_NAME:worklens}
+    username: ${WORKLENS_DB_USERNAME}
+    password: ${WORKLENS_DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  sql:
+    init:
+      mode: always
