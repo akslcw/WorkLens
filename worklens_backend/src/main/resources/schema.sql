@@ -61,6 +61,14 @@ CREATE TABLE IF NOT EXISTS detail_access_requests (
     processed_by_employee_id BIGINT NULL REFERENCES employees(id)
 );
 
+CREATE TABLE IF NOT EXISTS detail_access_audit_logs (
+    id BIGSERIAL PRIMARY KEY,
+    detail_access_request_id BIGINT NOT NULL REFERENCES detail_access_requests(id) ON DELETE CASCADE,
+    viewer_employee_id BIGINT NOT NULL REFERENCES employees(id),
+    target_employee_id BIGINT NOT NULL REFERENCES employees(id),
+    viewed_at TIMESTAMP NOT NULL
+);
+
 ALTER TABLE usage_records
     ADD COLUMN IF NOT EXISTS employee_id BIGINT;
 

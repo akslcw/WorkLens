@@ -1,19 +1,28 @@
 package com.su.worklens_backend.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.su.worklens_backend.auth.AuthenticatedUser;
+import com.su.worklens_backend.dto.DetailAccessAuditLogResponse;
 import com.su.worklens_backend.dto.DetailAccessRequestCreateRequest;
 import com.su.worklens_backend.dto.DetailAccessRequestDecisionRequest;
 import com.su.worklens_backend.dto.DetailAccessRequestResponse;
+import com.su.worklens_backend.dto.UsageRecordResponse;
+import com.su.worklens_backend.entity.DetailAccessAuditLog;
 import com.su.worklens_backend.entity.DetailAccessRequest;
 import com.su.worklens_backend.entity.Employee;
+import com.su.worklens_backend.entity.UsageRecord;
+import com.su.worklens_backend.mapper.DetailAccessAuditLogMapper;
 import com.su.worklens_backend.mapper.DetailAccessRequestMapper;
 import com.su.worklens_backend.mapper.EmployeeMapper;
+import com.su.worklens_backend.mapper.UsageRecordMapper;
 import com.su.worklens_backend.service.DetailAccessRequestService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class DetailAccessRequestServiceImpl implements DetailAccessRequestService {
@@ -21,13 +30,23 @@ public class DetailAccessRequestServiceImpl implements DetailAccessRequestServic
     private static final String STATUS_PENDING = "PENDING";
     private static final String STATUS_APPROVED = "APPROVED";
     private static final String STATUS_REJECTED = "REJECTED";
+    private static final String STATUS_USED = "USED";
+    private static final String AUTHORIZATION_USED_MESSAGE = "Detail access authorization has already been used";
+    private static final String AUTHORIZATION_MISSING_MESSAGE = "Detail access authorization is expired or does not exist";
 
+    private final DetailAccessAuditLogMapper detailAccessAuditLogMapper;
     private final DetailAccessRequestMapper detailAccessRequestMapper;
     private final EmployeeMapper employeeMapper;
+    private final UsageRecordMapper usageRecordMapper;
 
-    public DetailAccessRequestServiceImpl(DetailAccessRequestMapper detailAccessRequestMapper, EmployeeMapper employeeMapper) {
+    public DetailAccessRequestServiceImpl(DetailAccessAuditLogMapper detailAccessAuditLogMapper,
+                                          DetailAccessRequestMapper detailAccessRequestMapper,
+                                          EmployeeMapper employeeMapper,
+                                          UsageRecordMapper usageRecordMapper) {
+        this.detailAccessAuditLogMapper = detailAccessAuditLogMapper;
         this.detailAccessRequestMapper = detailAccessRequestMapper;
         this.employeeMapper = employeeMapper;
+        this.usageRecordMapper = usageRecordMapper;
     }
 
     @Override
@@ -74,6 +93,67 @@ public class DetailAccessRequestServiceImpl implements DetailAccessRequestServic
         return toResponse(detailAccessRequest);
     }
 
+    @Override
+    @Transactional
+    public List<UsageRecordResponse> viewApprovedUsageRecords(Long requestId, AuthenticatedUser authenticatedUser) {
+        DetailAccessRequest detailAccessRequest = detailAccessRequestMapper.selectById(requestId);
+        validateViewAuthorization(detailAccessRequest, authenticatedUser);
+
+        List<UsageRecordResponse> usageRecords = usageRecordMapper.selectList(
+                        new LambdaQueryWrapper<UsageRecord>()
+                                .eq(UsageRecord::getEmployeeId, detailAccessRequest.getTargetEmployeeId())
+                                .orderByAsc(UsageRecord::getStartedAt, UsageRecord::getId)
+                ).stream()
+                .map(this::toUsageRecordResponse)
+                .toList();
+
+        DetailAccessAuditLog auditLog = new DetailAccessAuditLog();
+        auditLog.setDetailAccessRequestId(detailAccessRequest.getId());
+        auditLog.setViewerEmployeeId(authenticatedUser.getEmployeeId());
+        auditLog.setTargetEmployeeId(detailAccessRequest.getTargetEmployeeId());
+        auditLog.setViewedAt(LocalDateTime.now());
+        detailAccessAuditLogMapper.insert(auditLog);
+
+        detailAccessRequest.setStatus(STATUS_USED);
+        detailAccessRequestMapper.updateById(detailAccessRequest);
+
+        return usageRecords;
+    }
+
+    @Override
+    public List<DetailAccessAuditLogResponse> listAccessAuditLogs(Long requestId, AuthenticatedUser authenticatedUser) {
+        DetailAccessRequest detailAccessRequest = detailAccessRequestMapper.selectById(requestId);
+        if (detailAccessRequest == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Detail access request not found");
+        }
+        if (!authenticatedUser.getEmployeeId().equals(detailAccessRequest.getRequesterEmployeeId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only the requesting manager can view access audit logs");
+        }
+
+        return detailAccessAuditLogMapper.selectList(
+                        new LambdaQueryWrapper<DetailAccessAuditLog>()
+                                .eq(DetailAccessAuditLog::getDetailAccessRequestId, requestId)
+                                .orderByAsc(DetailAccessAuditLog::getViewedAt, DetailAccessAuditLog::getId)
+                ).stream()
+                .map(this::toAuditLogResponse)
+                .toList();
+    }
+
+    private void validateViewAuthorization(DetailAccessRequest detailAccessRequest, AuthenticatedUser authenticatedUser) {
+        if (detailAccessRequest == null) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, AUTHORIZATION_MISSING_MESSAGE);
+        }
+        if (!authenticatedUser.getEmployeeId().equals(detailAccessRequest.getRequesterEmployeeId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, AUTHORIZATION_MISSING_MESSAGE);
+        }
+        if (STATUS_USED.equals(detailAccessRequest.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, AUTHORIZATION_USED_MESSAGE);
+        }
+        if (!STATUS_APPROVED.equals(detailAccessRequest.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, AUTHORIZATION_MISSING_MESSAGE);
+        }
+    }
+
     private DetailAccessRequestResponse toResponse(DetailAccessRequest detailAccessRequest) {
         return new DetailAccessRequestResponse(
                 detailAccessRequest.getId(),
@@ -84,6 +164,26 @@ public class DetailAccessRequestServiceImpl implements DetailAccessRequestServic
                 detailAccessRequest.getCreatedAt(),
                 detailAccessRequest.getProcessedAt(),
                 detailAccessRequest.getProcessedByEmployeeId()
+        );
+    }
+
+    private UsageRecordResponse toUsageRecordResponse(UsageRecord usageRecord) {
+        return new UsageRecordResponse(
+                usageRecord.getId(),
+                usageRecord.getAppName(),
+                usageRecord.getStartedAt(),
+                usageRecord.getEndedAt(),
+                usageRecord.getCreatedAt()
+        );
+    }
+
+    private DetailAccessAuditLogResponse toAuditLogResponse(DetailAccessAuditLog auditLog) {
+        return new DetailAccessAuditLogResponse(
+                auditLog.getId(),
+                auditLog.getDetailAccessRequestId(),
+                auditLog.getViewerEmployeeId(),
+                auditLog.getTargetEmployeeId(),
+                auditLog.getViewedAt()
         );
     }
 }

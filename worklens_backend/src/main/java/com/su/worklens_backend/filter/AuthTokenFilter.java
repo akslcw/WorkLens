@@ -58,6 +58,10 @@ public class AuthTokenFilter extends OncePerRequestFilter {
                 response.sendError(HttpServletResponse.SC_FORBIDDEN, "Manager role required");
                 return;
             }
+            if ("GET".equals(requestMethod) && !MANAGER_ROLE.equals(authenticatedUser.getRole())) {
+                response.sendError(HttpServletResponse.SC_FORBIDDEN, "Manager role required");
+                return;
+            }
             if ("PATCH".equals(requestMethod) && requestPath.endsWith("/decision")
                     && !EMPLOYEE_ROLE.equals(authenticatedUser.getRole())) {
                 response.sendError(HttpServletResponse.SC_FORBIDDEN, "Employee role required");

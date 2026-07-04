@@ -12,12 +12,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -41,6 +44,7 @@ class DetailAccessRequestControllerIntegrationTests extends PostgresIntegrationT
 
     @BeforeEach
     void cleanDatabase() {
+        truncateIfExists("TRUNCATE TABLE detail_access_audit_logs RESTART IDENTITY CASCADE");
         truncateIfExists("TRUNCATE TABLE detail_access_requests RESTART IDENTITY CASCADE");
         truncateIfExists("TRUNCATE TABLE auth_tokens RESTART IDENTITY CASCADE");
         truncateIfExists("TRUNCATE TABLE auth_users RESTART IDENTITY CASCADE");
@@ -194,6 +198,94 @@ class DetailAccessRequestControllerIntegrationTests extends PostgresIntegrationT
                 .andExpect(jsonPath("$.processedByEmployeeId").value(targetEmployeeId));
     }
 
+    @Test
+    void requesterManagerCanViewApprovedUsageRecordsOnceAndAuditIt() throws Exception {
+        long managerEmployeeId = insertUser("manager", PASSWORD_HASH, "MANAGER", "M001", "Manager User");
+        long targetEmployeeId = insertUser("employee.bob", PASSWORD_HASH, "EMPLOYEE", "E002", "Bob");
+        insertUsageRecord(targetEmployeeId, "Slack", "2026-07-04T09:00:00", "2026-07-04T09:30:00");
+        insertUsageRecord(targetEmployeeId, "Chrome", "2026-07-04T10:00:00", "2026-07-04T10:45:00");
+        long requestId = insertProcessedDetailAccessRequest(managerEmployeeId, targetEmployeeId, "Quarterly compliance review", "APPROVED", targetEmployeeId);
+        String managerToken = loginAndReadToken("manager", PASSWORD);
+
+        mockMvc.perform(get("/detail-access-requests/{id}/usage-records", requestId)
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].appName").value("Slack"))
+                .andExpect(jsonPath("$[1].appName").value("Chrome"))
+                .andExpect(jsonPath("$[0].employeeId").doesNotExist())
+                .andExpect(jsonPath("$[0].username").doesNotExist());
+
+        Map<String, Object> requestState = jdbcTemplate.queryForMap(
+                "SELECT status FROM detail_access_requests WHERE id = ?",
+                requestId
+        );
+        assertThat(requestState.get("status")).isEqualTo("USED");
+
+        List<Map<String, Object>> auditLogs = jdbcTemplate.queryForList(
+                """
+                        SELECT detail_access_request_id, viewer_employee_id, target_employee_id, viewed_at
+                        FROM detail_access_audit_logs
+                        WHERE detail_access_request_id = ?
+                        """,
+                requestId
+        );
+        assertThat(auditLogs).hasSize(1);
+        assertThat(((Number) auditLogs.get(0).get("viewer_employee_id")).longValue()).isEqualTo(managerEmployeeId);
+        assertThat(((Number) auditLogs.get(0).get("target_employee_id")).longValue()).isEqualTo(targetEmployeeId);
+        assertThat(auditLogs.get(0).get("viewed_at")).isNotNull();
+    }
+
+    @Test
+    void requesterManagerCannotViewWithUsedAuthorization() throws Exception {
+        long managerEmployeeId = insertUser("manager", PASSWORD_HASH, "MANAGER", "M001", "Manager User");
+        long targetEmployeeId = insertUser("employee.bob", PASSWORD_HASH, "EMPLOYEE", "E002", "Bob");
+        long requestId = insertProcessedDetailAccessRequest(managerEmployeeId, targetEmployeeId, "Quarterly compliance review", "USED", targetEmployeeId);
+        String managerToken = loginAndReadToken("manager", PASSWORD);
+
+        mockMvc.perform(get("/detail-access-requests/{id}/usage-records", requestId)
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isForbidden())
+                .andExpect(result -> {
+                    assertThat(result.getResolvedException()).isInstanceOf(ResponseStatusException.class);
+                    ResponseStatusException exception = (ResponseStatusException) result.getResolvedException();
+                    assertThat(exception.getReason()).isEqualTo("Detail access authorization has already been used");
+                });
+    }
+
+    @Test
+    void requesterManagerCannotViewWithExpiredOrMissingAuthorization() throws Exception {
+        insertUser("manager", PASSWORD_HASH, "MANAGER", "M001", "Manager User");
+        String managerToken = loginAndReadToken("manager", PASSWORD);
+
+        mockMvc.perform(get("/detail-access-requests/{id}/usage-records", 9999L)
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isForbidden())
+                .andExpect(result -> {
+                    assertThat(result.getResolvedException()).isInstanceOf(ResponseStatusException.class);
+                    ResponseStatusException exception = (ResponseStatusException) result.getResolvedException();
+                    assertThat(exception.getReason()).isEqualTo("Detail access authorization is expired or does not exist");
+                });
+    }
+
+    @Test
+    void requesterManagerCanListAccessAuditLogsForOwnRequest() throws Exception {
+        long managerEmployeeId = insertUser("manager", PASSWORD_HASH, "MANAGER", "M001", "Manager User");
+        long targetEmployeeId = insertUser("employee.bob", PASSWORD_HASH, "EMPLOYEE", "E002", "Bob");
+        long requestId = insertProcessedDetailAccessRequest(managerEmployeeId, targetEmployeeId, "Quarterly compliance review", "USED", targetEmployeeId);
+        insertAccessAuditLog(requestId, managerEmployeeId, targetEmployeeId, "2026-07-04T11:00:00");
+        String managerToken = loginAndReadToken("manager", PASSWORD);
+
+        mockMvc.perform(get("/detail-access-requests/{id}/access-logs", requestId)
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].detailAccessRequestId").value(requestId))
+                .andExpect(jsonPath("$[0].viewerEmployeeId").value(managerEmployeeId))
+                .andExpect(jsonPath("$[0].targetEmployeeId").value(targetEmployeeId))
+                .andExpect(jsonPath("$[0].viewedAt").value("2026-07-04T11:00:00"));
+    }
+
     private long insertUser(String username, String passwordHash, String role, String employeeNo, String name) {
         long employeeId = insertEmployee(employeeNo, name);
         jdbcTemplate.update(
@@ -254,6 +346,73 @@ class DetailAccessRequestControllerIntegrationTests extends PostgresIntegrationT
         );
         assertThat(requestId).isNotNull();
         return requestId;
+    }
+
+    private long insertProcessedDetailAccessRequest(long requesterEmployeeId, long targetEmployeeId, String reason, String status,
+                                                    long processedByEmployeeId) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO detail_access_requests (
+                            requester_employee_id,
+                            target_employee_id,
+                            reason,
+                            status,
+                            created_at,
+                            processed_at,
+                            processed_by_employee_id
+                        ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?)
+                        """,
+                requesterEmployeeId,
+                targetEmployeeId,
+                reason,
+                status,
+                processedByEmployeeId
+        );
+        Long requestId = jdbcTemplate.queryForObject(
+                """
+                        SELECT id
+                        FROM detail_access_requests
+                        WHERE requester_employee_id = ? AND target_employee_id = ? AND reason = ?
+                        ORDER BY id DESC
+                        LIMIT 1
+                        """,
+                Long.class,
+                requesterEmployeeId,
+                targetEmployeeId,
+                reason
+        );
+        assertThat(requestId).isNotNull();
+        return requestId;
+    }
+
+    private void insertUsageRecord(long employeeId, String appName, String startedAt, String endedAt) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO usage_records (employee_id, app_name, started_at, ended_at, created_at)
+                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        """,
+                employeeId,
+                appName,
+                LocalDateTime.parse(startedAt),
+                LocalDateTime.parse(endedAt)
+        );
+    }
+
+    private void insertAccessAuditLog(long requestId, long viewerEmployeeId, long targetEmployeeId, String viewedAt) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO detail_access_audit_logs (
+                            detail_access_request_id,
+                            viewer_employee_id,
+                            target_employee_id,
+                            viewed_at
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                requestId,
+                viewerEmployeeId,
+                targetEmployeeId,
+                LocalDateTime.parse(viewedAt)
+        );
     }
 
     private ResultActions login(String username, String password) throws Exception {
