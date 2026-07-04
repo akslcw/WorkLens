@@ -5,6 +5,7 @@ import com.su.worklens_backend.dto.DetailAccessAuditLogResponse;
 import com.su.worklens_backend.dto.DetailAccessRequestCreateRequest;
 import com.su.worklens_backend.dto.DetailAccessRequestDecisionRequest;
 import com.su.worklens_backend.dto.DetailAccessRequestResponse;
+import com.su.worklens_backend.dto.EmployeeDetailAccessRequestResponse;
 import com.su.worklens_backend.dto.UsageRecordResponse;
 
 import java.util.List;
@@ -16,6 +17,8 @@ public interface DetailAccessRequestService {
     DetailAccessRequestResponse decideDetailAccessRequest(Long requestId, DetailAccessRequestDecisionRequest request, AuthenticatedUser authenticatedUser);
 
     List<DetailAccessRequestResponse> listOwnDetailAccessRequests(AuthenticatedUser authenticatedUser);
+
+    List<EmployeeDetailAccessRequestResponse> listRequestsTargetingCurrentEmployee(AuthenticatedUser authenticatedUser);
 
     List<UsageRecordResponse> viewApprovedUsageRecords(Long requestId, AuthenticatedUser authenticatedUser);
 

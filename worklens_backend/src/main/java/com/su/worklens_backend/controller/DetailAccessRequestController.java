@@ -5,6 +5,7 @@ import com.su.worklens_backend.dto.DetailAccessAuditLogResponse;
 import com.su.worklens_backend.dto.DetailAccessRequestCreateRequest;
 import com.su.worklens_backend.dto.DetailAccessRequestDecisionRequest;
 import com.su.worklens_backend.dto.DetailAccessRequestResponse;
+import com.su.worklens_backend.dto.EmployeeDetailAccessRequestResponse;
 import com.su.worklens_backend.dto.UsageRecordResponse;
 import com.su.worklens_backend.service.AuthService;
 import com.su.worklens_backend.service.DetailAccessRequestService;
@@ -46,6 +47,12 @@ public class DetailAccessRequestController {
     public List<DetailAccessRequestResponse> listOwnDetailAccessRequests(HttpServletRequest httpServletRequest) {
         AuthenticatedUser authenticatedUser = authService.getAuthenticatedUser(httpServletRequest);
         return detailAccessRequestService.listOwnDetailAccessRequests(authenticatedUser);
+    }
+
+    @GetMapping("/targeting-me")
+    public List<EmployeeDetailAccessRequestResponse> listRequestsTargetingCurrentEmployee(HttpServletRequest httpServletRequest) {
+        AuthenticatedUser authenticatedUser = authService.getAuthenticatedUser(httpServletRequest);
+        return detailAccessRequestService.listRequestsTargetingCurrentEmployee(authenticatedUser);
     }
 
     @PatchMapping("/{id}/decision")

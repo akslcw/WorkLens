@@ -6,6 +6,7 @@ import com.su.worklens_backend.dto.DetailAccessAuditLogResponse;
 import com.su.worklens_backend.dto.DetailAccessRequestCreateRequest;
 import com.su.worklens_backend.dto.DetailAccessRequestDecisionRequest;
 import com.su.worklens_backend.dto.DetailAccessRequestResponse;
+import com.su.worklens_backend.dto.EmployeeDetailAccessRequestResponse;
 import com.su.worklens_backend.dto.UsageRecordResponse;
 import com.su.worklens_backend.entity.DetailAccessAuditLog;
 import com.su.worklens_backend.entity.DetailAccessRequest;
@@ -23,6 +24,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class DetailAccessRequestServiceImpl implements DetailAccessRequestService {
@@ -105,6 +110,48 @@ public class DetailAccessRequestServiceImpl implements DetailAccessRequestServic
     }
 
     @Override
+    public List<EmployeeDetailAccessRequestResponse> listRequestsTargetingCurrentEmployee(AuthenticatedUser authenticatedUser) {
+        List<DetailAccessRequest> requests = detailAccessRequestMapper.selectList(
+                new LambdaQueryWrapper<DetailAccessRequest>()
+                        .eq(DetailAccessRequest::getTargetEmployeeId, authenticatedUser.getEmployeeId())
+                        .orderByAsc(DetailAccessRequest::getCreatedAt, DetailAccessRequest::getId)
+        );
+        if (requests.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, String> requesterNamesById = employeeMapper.selectBatchIds(
+                        requests.stream()
+                                .map(DetailAccessRequest::getRequesterEmployeeId)
+                                .distinct()
+                                .toList()
+                ).stream()
+                .collect(Collectors.toMap(Employee::getId, Employee::getName));
+
+        Set<Long> requestIds = requests.stream()
+                .map(DetailAccessRequest::getId)
+                .collect(Collectors.toSet());
+        Map<Long, DetailAccessAuditLog> auditLogsByRequestId = detailAccessAuditLogMapper.selectList(
+                        new LambdaQueryWrapper<DetailAccessAuditLog>()
+                                .in(DetailAccessAuditLog::getDetailAccessRequestId, requestIds)
+                                .orderByAsc(DetailAccessAuditLog::getViewedAt, DetailAccessAuditLog::getId)
+                ).stream()
+                .collect(Collectors.toMap(
+                        DetailAccessAuditLog::getDetailAccessRequestId,
+                        Function.identity(),
+                        (existing, ignored) -> existing
+                ));
+
+        return requests.stream()
+                .map(request -> toEmployeeResponse(
+                        request,
+                        requesterNamesById.get(request.getRequesterEmployeeId()),
+                        auditLogsByRequestId.get(request.getId())
+                ))
+                .toList();
+    }
+
+    @Override
     @Transactional
     public List<UsageRecordResponse> viewApprovedUsageRecords(Long requestId, AuthenticatedUser authenticatedUser) {
         DetailAccessRequest detailAccessRequest = detailAccessRequestMapper.selectById(requestId);
@@ -175,6 +222,23 @@ public class DetailAccessRequestServiceImpl implements DetailAccessRequestServic
                 detailAccessRequest.getCreatedAt(),
                 detailAccessRequest.getProcessedAt(),
                 detailAccessRequest.getProcessedByEmployeeId()
+        );
+    }
+
+    private EmployeeDetailAccessRequestResponse toEmployeeResponse(DetailAccessRequest detailAccessRequest, String requesterEmployeeName,
+                                                                   DetailAccessAuditLog auditLog) {
+        boolean hasBeenViewed = auditLog != null || STATUS_USED.equals(detailAccessRequest.getStatus());
+        LocalDateTime viewedAt = auditLog == null ? null : auditLog.getViewedAt();
+        return new EmployeeDetailAccessRequestResponse(
+                detailAccessRequest.getId(),
+                detailAccessRequest.getRequesterEmployeeId(),
+                requesterEmployeeName,
+                detailAccessRequest.getReason(),
+                detailAccessRequest.getStatus(),
+                detailAccessRequest.getCreatedAt(),
+                detailAccessRequest.getProcessedAt(),
+                hasBeenViewed,
+                viewedAt
         );
     }
 
