@@ -42,6 +42,12 @@ public class DetailAccessRequestController {
         return detailAccessRequestService.createDetailAccessRequest(request, authenticatedUser);
     }
 
+    @GetMapping
+    public List<DetailAccessRequestResponse> listOwnDetailAccessRequests(HttpServletRequest httpServletRequest) {
+        AuthenticatedUser authenticatedUser = authService.getAuthenticatedUser(httpServletRequest);
+        return detailAccessRequestService.listOwnDetailAccessRequests(authenticatedUser);
+    }
+
     @PatchMapping("/{id}/decision")
     public DetailAccessRequestResponse decideDetailAccessRequest(@PathVariable("id") Long id,
                                                                  @Valid @RequestBody DetailAccessRequestDecisionRequest request,

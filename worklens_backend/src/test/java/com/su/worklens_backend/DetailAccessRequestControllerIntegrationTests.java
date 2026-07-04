@@ -286,6 +286,44 @@ class DetailAccessRequestControllerIntegrationTests extends PostgresIntegrationT
                 .andExpect(jsonPath("$[0].viewedAt").value("2026-07-04T11:00:00"));
     }
 
+    @Test
+    void listOwnDetailAccessRequestsRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/detail-access-requests"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void employeeCannotListDetailAccessRequests() throws Exception {
+        insertUser("employee.alice", PASSWORD_HASH, "EMPLOYEE", "E001", "Alice");
+        String employeeToken = loginAndReadToken("employee.alice", PASSWORD);
+
+        mockMvc.perform(get("/detail-access-requests")
+                        .header("Authorization", "Bearer " + employeeToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void managerCanListOnlyOwnDetailAccessRequests() throws Exception {
+        long managerAliceEmployeeId = insertUser("manager.alice", PASSWORD_HASH, "MANAGER", "M001", "Manager Alice");
+        long managerBobEmployeeId = insertUser("manager.bob", PASSWORD_HASH, "MANAGER", "M002", "Manager Bob");
+        long targetEmployeeId = insertUser("employee.bob", PASSWORD_HASH, "EMPLOYEE", "E001", "Employee Bob");
+        insertDetailAccessRequest(managerAliceEmployeeId, targetEmployeeId, "Quarterly compliance review", "PENDING");
+        insertProcessedDetailAccessRequest(managerAliceEmployeeId, targetEmployeeId, "Incident follow-up", "APPROVED", targetEmployeeId);
+        insertDetailAccessRequest(managerBobEmployeeId, targetEmployeeId, "Another manager request", "PENDING");
+        String aliceToken = loginAndReadToken("manager.alice", PASSWORD);
+
+        mockMvc.perform(get("/detail-access-requests")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].requesterEmployeeId").value(managerAliceEmployeeId))
+                .andExpect(jsonPath("$[0].reason").value("Quarterly compliance review"))
+                .andExpect(jsonPath("$[0].status").value("PENDING"))
+                .andExpect(jsonPath("$[1].requesterEmployeeId").value(managerAliceEmployeeId))
+                .andExpect(jsonPath("$[1].reason").value("Incident follow-up"))
+                .andExpect(jsonPath("$[1].status").value("APPROVED"));
+    }
+
     private long insertUser(String username, String passwordHash, String role, String employeeNo, String name) {
         long employeeId = insertEmployee(employeeNo, name);
         jdbcTemplate.update(

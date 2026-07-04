@@ -94,6 +94,17 @@ public class DetailAccessRequestServiceImpl implements DetailAccessRequestServic
     }
 
     @Override
+    public List<DetailAccessRequestResponse> listOwnDetailAccessRequests(AuthenticatedUser authenticatedUser) {
+        return detailAccessRequestMapper.selectList(
+                        new LambdaQueryWrapper<DetailAccessRequest>()
+                                .eq(DetailAccessRequest::getRequesterEmployeeId, authenticatedUser.getEmployeeId())
+                                .orderByAsc(DetailAccessRequest::getCreatedAt, DetailAccessRequest::getId)
+                ).stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public List<UsageRecordResponse> viewApprovedUsageRecords(Long requestId, AuthenticatedUser authenticatedUser) {
         DetailAccessRequest detailAccessRequest = detailAccessRequestMapper.selectById(requestId);
