@@ -19,6 +19,7 @@ public class AuthTokenFilter extends OncePerRequestFilter {
     private static final String EMPLOYEES_PATH_PREFIX = "/employees";
     private static final String USAGE_RECORDS_PATH_PREFIX = "/usage-records";
     private static final String TEAM_USAGE_SUMMARY_PATH = "/team-usage-summary";
+    private static final String DETAIL_ACCESS_REQUESTS_PATH_PREFIX = "/detail-access-requests";
     private static final String MANAGER_ROLE = "MANAGER";
     private static final String EMPLOYEE_ROLE = "EMPLOYEE";
 
@@ -46,6 +47,10 @@ public class AuthTokenFilter extends OncePerRequestFilter {
 
         request.setAttribute(AuthServiceImpl.CURRENT_USER_ATTRIBUTE, authenticatedUser);
         if (requestPath.startsWith(EMPLOYEES_PATH_PREFIX) && !MANAGER_ROLE.equals(authenticatedUser.getRole())) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Manager role required");
+            return;
+        }
+        if (requestPath.startsWith(DETAIL_ACCESS_REQUESTS_PATH_PREFIX) && !MANAGER_ROLE.equals(authenticatedUser.getRole())) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Manager role required");
             return;
         }

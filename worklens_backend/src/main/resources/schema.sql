@@ -50,6 +50,17 @@ CREATE TABLE IF NOT EXISTS usage_records (
     created_at TIMESTAMP NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS detail_access_requests (
+    id BIGSERIAL PRIMARY KEY,
+    requester_employee_id BIGINT NOT NULL REFERENCES employees(id),
+    target_employee_id BIGINT NOT NULL REFERENCES employees(id),
+    reason VARCHAR(1000) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    processed_at TIMESTAMP NULL,
+    processed_by_employee_id BIGINT NULL REFERENCES employees(id)
+);
+
 ALTER TABLE usage_records
     ADD COLUMN IF NOT EXISTS employee_id BIGINT;
 
