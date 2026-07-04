@@ -2,12 +2,15 @@ package com.su.worklens_backend.controller;
 
 import com.su.worklens_backend.auth.AuthenticatedUser;
 import com.su.worklens_backend.dto.DetailAccessRequestCreateRequest;
+import com.su.worklens_backend.dto.DetailAccessRequestDecisionRequest;
 import com.su.worklens_backend.dto.DetailAccessRequestResponse;
 import com.su.worklens_backend.service.AuthService;
 import com.su.worklens_backend.service.DetailAccessRequestService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,5 +35,13 @@ public class DetailAccessRequestController {
                                                                  HttpServletRequest httpServletRequest) {
         AuthenticatedUser authenticatedUser = authService.getAuthenticatedUser(httpServletRequest);
         return detailAccessRequestService.createDetailAccessRequest(request, authenticatedUser);
+    }
+
+    @PatchMapping("/{id}/decision")
+    public DetailAccessRequestResponse decideDetailAccessRequest(@PathVariable("id") Long id,
+                                                                 @Valid @RequestBody DetailAccessRequestDecisionRequest request,
+                                                                 HttpServletRequest httpServletRequest) {
+        AuthenticatedUser authenticatedUser = authService.getAuthenticatedUser(httpServletRequest);
+        return detailAccessRequestService.decideDetailAccessRequest(id, request, authenticatedUser);
     }
 }

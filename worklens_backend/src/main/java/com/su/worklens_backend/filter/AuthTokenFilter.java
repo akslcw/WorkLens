@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Locale;
 
 @Component
 public class AuthTokenFilter extends OncePerRequestFilter {
@@ -33,6 +34,7 @@ public class AuthTokenFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
         String requestPath = request.getRequestURI();
+        String requestMethod = request.getMethod().toUpperCase(Locale.ROOT);
         if (LOGIN_PATH.equals(requestPath)) {
             filterChain.doFilter(request, response);
             return;
@@ -50,9 +52,17 @@ public class AuthTokenFilter extends OncePerRequestFilter {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Manager role required");
             return;
         }
-        if (requestPath.startsWith(DETAIL_ACCESS_REQUESTS_PATH_PREFIX) && !MANAGER_ROLE.equals(authenticatedUser.getRole())) {
-            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Manager role required");
-            return;
+        if (requestPath.startsWith(DETAIL_ACCESS_REQUESTS_PATH_PREFIX)) {
+            if ("POST".equals(requestMethod) && DETAIL_ACCESS_REQUESTS_PATH_PREFIX.equals(requestPath)
+                    && !MANAGER_ROLE.equals(authenticatedUser.getRole())) {
+                response.sendError(HttpServletResponse.SC_FORBIDDEN, "Manager role required");
+                return;
+            }
+            if ("PATCH".equals(requestMethod) && requestPath.endsWith("/decision")
+                    && !EMPLOYEE_ROLE.equals(authenticatedUser.getRole())) {
+                response.sendError(HttpServletResponse.SC_FORBIDDEN, "Employee role required");
+                return;
+            }
         }
         if (TEAM_USAGE_SUMMARY_PATH.equals(requestPath) && !MANAGER_ROLE.equals(authenticatedUser.getRole())) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Manager role required");
