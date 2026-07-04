@@ -39,12 +39,11 @@ worklens/
 
 ### 1. 启动 PostgreSQL
 
-仓库根目录提供了示例环境变量文件 [.env.example](/E:/code/worklens/.env.example)。
+仓库根目录提供了示例环境变量文件 [.env.example](./.env.example)。
 
 最简单的本地启动方式：
 
 ```powershell
-cd E:\code\worklens
 docker compose --env-file .env.example -f compose.yml up -d
 ```
 
@@ -66,7 +65,7 @@ docker compose --env-file .env.example -f compose.yml up -d
 后端数据库连接信息从环境变量读取。PowerShell 下可以先按 `.env.example` 设置：
 
 ```powershell
-cd E:\code\worklens\worklens_backend
+cd worklens_backend
 $env:WORKLENS_DB_HOST='127.0.0.1'
 $env:WORKLENS_DB_PORT='5432'
 $env:WORKLENS_DB_NAME='worklens'
@@ -90,7 +89,7 @@ ok
 ### 3. 启动前端
 
 ```powershell
-cd E:\code\worklens\worklens_frontend
+cd worklens_frontend
 npm install
 npm run dev
 ```
@@ -144,20 +143,20 @@ http://localhost:5173
 后端测试：
 
 ```powershell
-cd E:\code\worklens\worklens_backend
+cd worklens_backend
 .\mvnw.cmd test
 ```
 
 前端测试：
 
 ```powershell
-cd E:\code\worklens\worklens_frontend
+cd worklens_frontend
 npm test
 ```
 
 前端构建：
 
 ```powershell
-cd E:\code\worklens\worklens_frontend
+cd worklens_frontend
 npm run build
 ```
