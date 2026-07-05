@@ -1,9 +1,11 @@
 package com.su.worklens_backend.service.impl;
 
+import com.su.worklens_backend.auth.AuthenticatedUser;
 import com.su.worklens_backend.dto.AppUsageRatioResponse;
 import com.su.worklens_backend.dto.TeamReportResponse;
 import com.su.worklens_backend.dto.TeamUsageSummaryResponse;
 import com.su.worklens_backend.service.LlmProvider;
+import com.su.worklens_backend.service.ReportHistoryService;
 import com.su.worklens_backend.service.TeamReportService;
 import com.su.worklens_backend.service.UsageRecordService;
 import org.springframework.stereotype.Service;
@@ -15,17 +17,21 @@ public class TeamReportServiceImpl implements TeamReportService {
 
     private final UsageRecordService usageRecordService;
     private final LlmProvider llmProvider;
+    private final ReportHistoryService reportHistoryService;
 
-    public TeamReportServiceImpl(UsageRecordService usageRecordService, LlmProvider llmProvider) {
+    public TeamReportServiceImpl(UsageRecordService usageRecordService, LlmProvider llmProvider, ReportHistoryService reportHistoryService) {
         this.usageRecordService = usageRecordService;
         this.llmProvider = llmProvider;
+        this.reportHistoryService = reportHistoryService;
     }
 
     @Override
-    public TeamReportResponse generateTeamReport() {
+    public TeamReportResponse generateTeamReport(AuthenticatedUser authenticatedUser) {
         TeamUsageSummaryResponse summary = usageRecordService.getTeamUsageSummary();
         String prompt = buildPrompt(summary);
-        return new TeamReportResponse(llmProvider.generateText(prompt));
+        String reportSummary = llmProvider.generateText(prompt);
+        reportHistoryService.saveTeamSummaryReport(authenticatedUser.getEmployeeId(), reportSummary);
+        return new TeamReportResponse(reportSummary);
     }
 
     private String buildPrompt(TeamUsageSummaryResponse summary) {

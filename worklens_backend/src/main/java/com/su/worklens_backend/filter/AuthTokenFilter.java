@@ -23,7 +23,9 @@ public class AuthTokenFilter extends OncePerRequestFilter {
     private static final String DETAIL_ACCESS_REQUESTS_PATH_PREFIX = "/detail-access-requests";
     private static final String DETAIL_ACCESS_REQUESTS_TARGETING_ME_PATH = "/detail-access-requests/targeting-me";
     private static final String EMPLOYEE_REPORT_PATH = "/llm/employee-report";
+    private static final String EMPLOYEE_REPORT_HISTORY_PATH = "/llm/employee-report-history";
     private static final String TEAM_REPORT_PATH = "/llm/team-report";
+    private static final String TEAM_REPORT_HISTORY_PATH = "/llm/team-report-history";
     private static final String MANAGER_ROLE = "MANAGER";
     private static final String EMPLOYEE_ROLE = "EMPLOYEE";
 
@@ -85,7 +87,15 @@ public class AuthTokenFilter extends OncePerRequestFilter {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Employee role required");
             return;
         }
+        if (EMPLOYEE_REPORT_HISTORY_PATH.equals(requestPath) && !EMPLOYEE_ROLE.equals(authenticatedUser.getRole())) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Employee role required");
+            return;
+        }
         if (TEAM_REPORT_PATH.equals(requestPath) && !MANAGER_ROLE.equals(authenticatedUser.getRole())) {
+            response.sendError(HttpServletResponse.SC_FORBIDDEN, "Manager role required");
+            return;
+        }
+        if (TEAM_REPORT_HISTORY_PATH.equals(requestPath) && !MANAGER_ROLE.equals(authenticatedUser.getRole())) {
             response.sendError(HttpServletResponse.SC_FORBIDDEN, "Manager role required");
             return;
         }

@@ -5,6 +5,7 @@ import com.su.worklens_backend.dto.EmployeeReportResponse;
 import com.su.worklens_backend.dto.UsageRecordResponse;
 import com.su.worklens_backend.service.EmployeeReportService;
 import com.su.worklens_backend.service.LlmProvider;
+import com.su.worklens_backend.service.ReportHistoryService;
 import com.su.worklens_backend.service.UsageRecordService;
 import org.springframework.stereotype.Service;
 
@@ -22,10 +23,12 @@ public class EmployeeReportServiceImpl implements EmployeeReportService {
 
     private final UsageRecordService usageRecordService;
     private final LlmProvider llmProvider;
+    private final ReportHistoryService reportHistoryService;
 
-    public EmployeeReportServiceImpl(UsageRecordService usageRecordService, LlmProvider llmProvider) {
+    public EmployeeReportServiceImpl(UsageRecordService usageRecordService, LlmProvider llmProvider, ReportHistoryService reportHistoryService) {
         this.usageRecordService = usageRecordService;
         this.llmProvider = llmProvider;
+        this.reportHistoryService = reportHistoryService;
     }
 
     @Override
@@ -38,7 +41,9 @@ public class EmployeeReportServiceImpl implements EmployeeReportService {
                 .toList();
 
         String prompt = buildPrompt(authenticatedUser, reportStart, reportEnd, recentRecords);
-        return new EmployeeReportResponse(llmProvider.generateText(prompt));
+        String summary = llmProvider.generateText(prompt);
+        reportHistoryService.saveEmployeeWeeklyReport(authenticatedUser.getEmployeeId(), reportStart, reportEnd, summary);
+        return new EmployeeReportResponse(summary);
     }
 
     private String buildPrompt(

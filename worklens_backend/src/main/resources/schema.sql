@@ -90,3 +90,14 @@ ALTER TABLE usage_records
 ALTER TABLE usage_records
     ADD CONSTRAINT usage_records_employee_id_fkey
     FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE;
+
+CREATE TABLE IF NOT EXISTS llm_reports (
+    id BIGSERIAL PRIMARY KEY,
+    report_type VARCHAR(50) NOT NULL,
+    requester_employee_id BIGINT NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    target_employee_id BIGINT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    summary TEXT NOT NULL,
+    period_started_at TIMESTAMP NULL,
+    period_ended_at TIMESTAMP NULL,
+    created_at TIMESTAMP NOT NULL
+);
