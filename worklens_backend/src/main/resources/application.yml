@@ -9,3 +9,9 @@ spring:
   sql:
     init:
       mode: always
+worklens:
+  llm:
+    deepseek:
+      base-url: ${WORKLENS_DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      api-key: ${WORKLENS_DEEPSEEK_API_KEY:}
+      model: ${WORKLENS_DEEPSEEK_MODEL:deepseek-v4-flash}

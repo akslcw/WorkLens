@@ -1,0 +1,22 @@
+package com.su.worklens_backend.config;
+
+import com.su.worklens_backend.service.LlmProvider;
+import com.su.worklens_backend.service.impl.DeepSeekLlmProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class LlmConfiguration {
+
+    @Bean
+    public LlmProvider llmProvider(
+            RestTemplateBuilder restTemplateBuilder,
+            @Value("${worklens.llm.deepseek.base-url}") String baseUrl,
+            @Value("${worklens.llm.deepseek.api-key:}") String apiKey,
+            @Value("${worklens.llm.deepseek.model}") String model
+    ) {
+        return new DeepSeekLlmProvider(restTemplateBuilder.build(), baseUrl, apiKey, model);
+    }
+}
