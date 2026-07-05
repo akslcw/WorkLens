@@ -10,6 +10,7 @@ import type { RouteRole } from './auth/types'
 import EmployeeHomeView from './views/EmployeeHomeView.vue'
 import LoginView from './views/LoginView.vue'
 import ManagerHomeView from './views/ManagerHomeView.vue'
+import ManagerTeamView from './views/ManagerTeamView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -39,6 +40,15 @@ const routes: RouteRecordRaw[] = [
     path: '/manager',
     name: 'manager-home',
     component: ManagerHomeView,
+    meta: {
+      requiresAuth: true,
+      role: 'MANAGER',
+    },
+  },
+  {
+    path: '/manager/team',
+    name: 'manager-team',
+    component: ManagerTeamView,
     meta: {
       requiresAuth: true,
       role: 'MANAGER',

@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { createEmployee, deleteEmployee, getEmployees, type Employee } from '../api/employees'
 import { clearSession, readStoredSession } from '../auth/session'
+import ManagerWorkspaceNav from '../components/ManagerWorkspaceNav.vue'
 
 const router = useRouter()
 const session = readStoredSession()
@@ -114,6 +115,9 @@ function toErrorMessage(error: unknown, fallback: string) {
         <p class="eyebrow">Manager Workspace</p>
         <h1>员工档案管理</h1>
         <p class="hero-copy">这里只对接现有 `/employees` 接口：看列表、新增员工、删除员工，不扩展到账号创建。</p>
+        <div class="hero-nav">
+          <ManagerWorkspaceNav current="directory" />
+        </div>
       </div>
       <div class="hero-actions">
         <div class="session-pill">
@@ -270,6 +274,10 @@ function toErrorMessage(error: unknown, fallback: string) {
 .hero-copy {
   margin-top: 14px;
   max-width: 620px;
+}
+
+.hero-nav {
+  margin-top: 18px;
 }
 
 .hero-actions {

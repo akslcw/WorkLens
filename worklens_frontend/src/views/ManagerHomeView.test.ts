@@ -141,7 +141,10 @@ describe('ManagerHomeView', () => {
 async function mountManagerHome() {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/manager', component: ManagerHomeView }],
+    routes: [
+      { path: '/manager', component: ManagerHomeView },
+      { path: '/manager/team', component: { template: '<div />' } },
+    ],
   })
 
   router.push('/manager')
