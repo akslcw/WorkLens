@@ -113,6 +113,7 @@ async function mountManagerTeam() {
     routes: [
       { path: '/manager', component: { template: '<div />' } },
       { path: '/manager/team', component: ManagerTeamView },
+      { path: '/manager/access-requests', component: { template: '<div />' } },
     ],
   })
 

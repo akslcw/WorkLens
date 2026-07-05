@@ -144,6 +144,7 @@ async function mountManagerHome() {
     routes: [
       { path: '/manager', component: ManagerHomeView },
       { path: '/manager/team', component: { template: '<div />' } },
+      { path: '/manager/access-requests', component: { template: '<div />' } },
     ],
   })
 

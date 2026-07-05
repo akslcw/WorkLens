@@ -2,7 +2,7 @@
 import { RouterLink } from 'vue-router'
 
 defineProps<{
-  current: 'directory' | 'team'
+  current: 'directory' | 'team' | 'access'
 }>()
 </script>
 
@@ -21,6 +21,13 @@ defineProps<{
       to="/manager/team"
     >
       团队效能
+    </RouterLink>
+    <RouterLink
+      class="workspace-link"
+      :class="{ 'workspace-link--active': current === 'access' }"
+      to="/manager/access-requests"
+    >
+      查看申请
     </RouterLink>
   </nav>
 </template>
