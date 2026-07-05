@@ -1,13 +1,17 @@
 package com.su.worklens_backend.service.impl;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.su.worklens_backend.exception.LlmProviderException;
+import com.su.worklens_backend.exception.LlmProviderTimeoutException;
 import com.su.worklens_backend.service.LlmProvider;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.SocketTimeoutException;
 import java.util.List;
 
 public class DeepSeekLlmProvider implements LlmProvider {
@@ -39,22 +43,47 @@ public class DeepSeekLlmProvider implements LlmProvider {
                 List.of(new DeepSeekMessage("user", prompt))
         );
 
-        DeepSeekChatCompletionResponse response = restTemplate.postForObject(
-                baseUrl + "/chat/completions",
-                new HttpEntity<>(requestBody, headers),
-                DeepSeekChatCompletionResponse.class
-        );
+        DeepSeekChatCompletionResponse response;
+        try {
+            response = restTemplate.postForObject(
+                    baseUrl + "/chat/completions",
+                    new HttpEntity<>(requestBody, headers),
+                    DeepSeekChatCompletionResponse.class
+            );
+        } catch (ResourceAccessException exception) {
+            if (isTimeout(exception)) {
+                throw new LlmProviderTimeoutException("DeepSeek API request timed out", exception);
+            }
+            throw new LlmProviderException("DeepSeek API request failed", exception);
+        } catch (RuntimeException exception) {
+            throw new LlmProviderException("DeepSeek API request failed", exception);
+        }
 
         if (response == null || response.choices() == null || response.choices().isEmpty()) {
-            throw new IllegalStateException("DeepSeek API response did not contain any choices");
+            throw new LlmProviderException("DeepSeek API response did not contain any choices");
         }
 
         DeepSeekMessage message = response.choices().get(0).message();
         if (message == null || !StringUtils.hasText(message.content())) {
-            throw new IllegalStateException("DeepSeek API response did not contain any assistant message");
+            throw new LlmProviderException("DeepSeek API response did not contain any assistant message");
         }
 
         return message.content().trim();
+    }
+
+    private boolean isTimeout(ResourceAccessException exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof SocketTimeoutException) {
+                return true;
+            }
+            String message = current.getMessage();
+            if (message != null && message.toLowerCase().contains("timed out")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private String trimTrailingSlash(String url) {

@@ -1,45 +1,49 @@
 # WorkLens
 
-WorkLens 是一个面向团队的员工应用使用效率分析系统原型。
+WorkLens 是一套面向团队的员工应用使用效率分析系统原型。
 
 核心权限边界：
-- 管理者默认只能看团队聚合后的、去标识化的趋势数据，不能直接查看员工个体明细
-- 员工本人可以查看自己的完整使用明细
-- 如果管理者需要查看某个员工的明细，必须先发起申请，并由该员工本人批准
-- 批准后的授权仅一次性有效，用后即失效
-- 每一次实际查看员工明细的行为都会留下审计记录
-- 员工本人可以查看“谁申请过看我的数据、我如何处理、对方是否真的看过”
+- 管理者默认只能看到团队聚合后的、去标识化的趋势数据，不能直接查看员工个人明细。
+- 员工本人只能看到自己的完整明细。
+- 如果管理者需要查看某个员工的个人明细，必须先走“申请 -> 员工本人审批 -> 一次性查看 -> 留痕审计”流程。
 
-当前仓库为单体应用，包含：
+当前仓库是单体应用，包含：
 - `worklens_backend`：Spring Boot + MyBatis-Plus + PostgreSQL
 - `worklens_frontend`：Vue 3 + TypeScript + Vite
 - `worklens_desktop_client`：Windows Python 桌面采集客户端
 - `compose.yml`：本地 PostgreSQL 开发环境
 
-## 当前完成程度
+## 当前完成度
 
-当前已完成到模块 17，后端、前端、桌面客户端基础链路已跑通：
-- 后端可启动，`GET /health` 可用
-- PostgreSQL 可通过 Docker Compose 一键启动
-- 员工档案 CRUD 已完成，且仅管理者可访问
-- 用户登录、鉴权、角色识别已完成，所有业务接口都要求登录
-- 应用使用记录上报已完成，记录归属强制以服务端解析出的当前登录员工 `employees.id` 为准
-- 管理者团队聚合接口已完成
-- 员工个人明细接口已完成，不能通过改参数查看其他人的数据
-- 前端已完成登录后双视角展示：管理者看聚合视图，员工看个人明细视图
-- 审计授权流程已完成：管理者可发起明细查看申请，员工本人可批准或拒绝，批准后管理者可一次性查看明细，并可查询对应访问审计日志
-- 管理者可查询自己发起过的全部明细查看申请及其状态
-- 员工可查询所有“指向自己”的明细查看申请记录，并区分“已批准但未查看”与“已批准且已查看”
-- Windows 桌面采集客户端已完成：
-  - 员工账号登录后可真实调用 `/auth/login`
-  - 可自动采集当前前台应用的进程名
-  - 可将连续使用同一应用的时间段合并成记录
-  - 可将长时间无键鼠操作单独记为 `Idle`
-  - 默认每 5 分钟批量上报一次
-  - 上报失败时会写入本地 SQLite，恢复后自动补传
-  - 已提供最小系统托盘图标，显示“运行中/已停止”状态
+当前已完成到模块 22。
 
-当前仍是 MVP/原型版本，不是完整产品。
+已经实现的主链路：
+- 登录鉴权，所有业务接口都要求登录，不允许匿名访问
+- 员工档案 CRUD，仅管理者可访问
+- 员工使用记录上报，记录归属强制以服务端解析出的 `employees.id` 为准
+- 双视角权限边界
+  - 员工只能查看自己的完整明细
+  - 管理者只能查看团队聚合数据
+- 审计授权流程
+  - 管理者可发起个人明细查看申请
+  - 只有目标员工本人可以批准或拒绝
+  - 批准后授权一次性有效，用后即失效
+  - 每次实际查看都会写入审计日志
+  - 员工本人可查看“谁申请过看我的数据、我怎么处理、对方是否已实际查看”
+- Windows 桌面采集客户端
+  - 员工账号登录后自动上报使用记录
+  - 每 5 秒采样一次当前前台应用进程名
+  - 5 分钟无键鼠操作视为 `Idle`
+  - `Idle` 单独记录，不跳过
+  - 每 5 分钟批量上报
+  - 上报失败写入本地 SQLite，恢复后自动补传
+  - 支持最小系统托盘运行方式
+- LLM 报告能力
+  - DeepSeek API 薄封装接入，不引入 Agent 叙事
+  - 员工可主动生成“最近一周”的个人鼓励性总结
+  - 管理者可生成仅基于团队聚合数据的团队简报
+  - 报告生成历史已落库，可查询
+  - LLM 调用超时或上游失败时会返回清晰错误，不是空白 500
 
 ## 目录结构
 
@@ -56,7 +60,7 @@ worklens/
 
 ### 1. 启动 PostgreSQL
 
-仓库根目录提供了示例环境变量文件 [.env.example](./.env.example)。
+仓库根目录提供了示例环境变量文件 [`.env.example`](./.env.example)。
 
 最简单的启动方式：
 
@@ -64,13 +68,13 @@ worklens/
 docker compose --env-file .env.example -f compose.yml up -d
 ```
 
-启动后可执行：
+确认容器状态：
 
 ```powershell
 docker ps
 ```
 
-如果本机已经跑过旧版本 PostgreSQL，且密码与当前 `.env.example` 不一致，先重建数据卷再启动：
+如果你本机之前跑过旧的数据库卷，且口令与当前 `.env.example` 不一致，可重建卷：
 
 ```powershell
 docker compose -f compose.yml down -v
@@ -79,7 +83,7 @@ docker compose --env-file .env.example -f compose.yml up -d
 
 ### 2. 启动后端
 
-后端数据库连接信息从环境变量读取。PowerShell 示例：
+后端数据库连接信息通过环境变量读取。
 
 ```powershell
 cd worklens_backend
@@ -91,7 +95,7 @@ $env:WORKLENS_DB_PASSWORD='change-me'
 .\mvnw.cmd spring-boot:run
 ```
 
-启动成功后访问：
+健康检查：
 
 ```text
 http://localhost:8080/health
@@ -111,13 +115,13 @@ npm install
 npm run dev
 ```
 
-启动后默认访问：
+默认访问地址：
 
 ```text
 http://localhost:5173
 ```
 
-### 4. 启动 Windows 桌面采集客户端
+### 4. 启动桌面采集客户端
 
 先安装依赖：
 
@@ -131,7 +135,7 @@ python -m pip install -r worklens_desktop_client/requirements.txt
 python -m worklens_desktop_client.manual_report --base-url http://localhost:8080
 ```
 
-仅本地采集并输出合并后的记录：
+只做本地采集并输出合并结果：
 
 ```powershell
 python -m worklens_desktop_client.collect_activity
@@ -149,24 +153,51 @@ python -m worklens_desktop_client.run_sync_client --base-url http://localhost:80
 pythonw -m worklens_desktop_client.tray_app
 ```
 
-## 桌面客户端关键参数
+## LLM 配置
 
-当前客户端的默认策略如下：
+LLM 报告能力使用 DeepSeek API，API Key 不写入仓库，必须通过环境变量提供。
+
+启动后端前可按需设置：
+
+```powershell
+$env:WORKLENS_DEEPSEEK_API_KEY='your-deepseek-api-key'
+```
+
+可选配置项：
+
+```powershell
+$env:WORKLENS_DEEPSEEK_BASE_URL='https://api.deepseek.com'
+$env:WORKLENS_DEEPSEEK_MODEL='deepseek-v4-flash'
+$env:WORKLENS_DEEPSEEK_CONNECT_TIMEOUT='5s'
+$env:WORKLENS_DEEPSEEK_READ_TIMEOUT='15s'
+```
+
+## 当前关键参数
+
+桌面客户端默认策略：
 - 采样频率：每 `5` 秒检测一次当前前台应用
 - 采集内容：只采集应用名/进程名，不采集窗口标题，不做域名级追踪
 - 空闲判定：连续 `5` 分钟无键鼠操作视为 `Idle`
-- 空闲处理：空闲时间单独记录为一条 `Idle` 记录，不跳过
+- 空闲处理：空闲时间单独记为 `Idle`
 - 上报周期：每 `5` 分钟批量上报一次
-- 失败重试：上报失败时写入本地 SQLite，后续恢复连接后自动补传
+- 失败重试：失败写入本地 SQLite，恢复后自动补传
 
-## 当前主要能力
+后端 LLM 默认策略：
+- 员工报告时间范围：最近一周
+- 员工报告生成方式：员工主动点击生成
+- 团队报告输入：只允许团队聚合数据，绝不把个人明细传给 LLM
+- 报告历史策略：同一时间段重复生成时，保留多份历史记录，不覆盖旧报告
+
+## 主要接口能力
 
 ### 认证与基础权限
 
 - `POST /auth/login`
 - `GET /auth/me`
 - `GET /health`
-- 所有业务接口都要求有效 token，不允许匿名访问
+
+说明：
+- 所有业务接口都要求有效 token
 
 ### 员工管理
 
@@ -188,7 +219,7 @@ pythonw -m worklens_desktop_client.tray_app
 说明：
 - `POST /usage-records` 仅允许员工上报，且不接受客户端传 `employeeId`
 - `GET /usage-records` 仅返回当前登录员工自己的明细
-- `GET /team-usage-summary` 仅返回团队聚合统计，不返回任何个体明细
+- `GET /team-usage-summary` 仅返回聚合统计，不返回任何个人明细
 
 ### 审计授权流程
 
@@ -197,52 +228,78 @@ pythonw -m worklens_desktop_client.tray_app
 - `PATCH /detail-access-requests/{id}/decision`
 - `GET /detail-access-requests/{id}/usage-records`
 - `GET /detail-access-requests/{id}/access-logs`
-
-说明：
-- 管理者可发起明细查看申请，并查询自己发起过的申请记录
-- 审批人只能是被申请查看的那个员工本人
-- 批准后的授权为一次性有效，管理者成功查看一次后即失效
-- 若授权已使用，接口返回 `403 Forbidden`，错误文案为 `Detail access authorization has already been used`
-- 若授权已过期或不存在，接口返回 `403 Forbidden`，错误文案为 `Detail access authorization is expired or does not exist`
-- 每次实际查看员工明细都会写入访问审计日志
-
-### 员工侧查看自身相关访问记录
-
 - `GET /detail-access-requests/targeting-me`
 
 说明：
-- 仅允许员工访问
-- 只返回“目标员工是当前登录员工本人”的申请记录
-- 返回内容包含申请人、申请理由、申请状态、是否已实际查看、查看时间
-- 可区分以下几类状态：
-  - `PENDING`：已申请，待员工处理
-  - `REJECTED`：员工已拒绝
-  - `APPROVED` 且 `hasBeenViewed=false`：员工已批准，但管理者还没实际查看
-  - `USED` 且 `hasBeenViewed=true`：员工已批准，且管理者已经实际查看过
+- 管理者可发起明细查看申请
+- 只有目标员工本人可以审批
+- 授权一次性有效，用后即失效
+- 员工可查看指向自己的申请及后续实际查看情况
+
+### LLM 报告
+
+- `GET /llm/test-response`
+- `POST /llm/employee-report`
+- `GET /llm/employee-report-history`
+- `POST /llm/team-report`
+- `GET /llm/team-report-history`
+
+说明：
+- `GET /llm/test-response` 仅用于验证 DeepSeek 调用链路是否可用
+- `POST /llm/employee-report` 仅 `EMPLOYEE` 可调用，基于本人最近一周明细生成报告
+- `GET /llm/employee-report-history` 仅 `EMPLOYEE` 可调用，只能看自己的报告历史
+- `POST /llm/team-report` 仅 `MANAGER` 可调用，输入只允许团队聚合数据
+- `GET /llm/team-report-history` 仅 `MANAGER` 可调用，只能看自己生成过的团队报告历史
+
+### LLM 失败处理
+
+当 DeepSeek 调用失败时：
+- 超时返回 `504 Gateway Timeout`
+- 上游报错或调用失败返回 `502 Bad Gateway`
+
+返回示例：
+
+```json
+{
+  "code": "LLM_TIMEOUT",
+  "message": "DeepSeek API request timed out"
+}
+```
+
+```json
+{
+  "code": "LLM_PROVIDER_ERROR",
+  "message": "DeepSeek API request failed"
+}
+```
 
 ## 当前使用说明
 
-这个仓库目前没有单独的初始化种子脚本，也没有注册页面。
+当前仓库仍是 MVP/原型状态，还没有做：
+- 注册页面
+- 初始化种子数据脚本
+- 生产级部署和监控
+- 真实组织架构、多级审批、报表前端页面美化
 
 这意味着：
-- 数据库表会由后端启动时自动创建
-- 登录账号、员工档案、使用记录、审计申请记录，需要自行准备测试数据
-- 现有集成测试和客户端单元测试里包含完整的测试数据构造逻辑，可作为参考
+- 数据库表会在后端启动时自动初始化
+- 测试账号、员工档案和使用记录需要自行准备
+- 集成测试代码本身就是当前最完整的接口行为样例
 
 ## 已知限制
 
-团队聚合接口虽然不返回员工明细，但当团队人数很少时，聚合结果在数学上可能接近个体明细。
+团队聚合接口虽然不返回个人明细，但在团队人数很少时，聚合结果在数学上可能接近个体明细。
 
 例如：
-- 团队只有 1 人时，聚合值就等于该员工自己的数据
+- 团队只有 1 人时，聚合值本质上就等于该员工个人数据
 - 团队只有 2 到 3 人时，也可能通过上下文推断出个体情况
 
-当前版本还没有加入这类保护机制：
+当前版本没有做这类保护：
 - 最小分组人数门槛
 - 小样本隐藏
 - 更严格的匿名化/去标识化策略
 
-因此，当前“管理者默认只能看聚合视图”只在接口结构上成立，在极小团队场景下仍存在推断风险。这是当前版本明确保留的已知限制。
+这是当前版本明确保留的已知限制，本轮不处理。
 
 ## 常用验证命令
 
@@ -253,11 +310,11 @@ cd worklens_backend
 .\mvnw.cmd test
 ```
 
-前端测试：
+前端构建：
 
 ```powershell
 cd worklens_frontend
-npm test
+npm run build
 ```
 
 桌面客户端测试：
@@ -267,11 +324,4 @@ python -m unittest worklens_desktop_client.tests.test_api_client
 python -m unittest worklens_desktop_client.tests.test_activity_tracker
 python -m unittest worklens_desktop_client.tests.test_sync_service
 python -m unittest worklens_desktop_client.tests.test_background_runner
-```
-
-前端构建：
-
-```powershell
-cd worklens_frontend
-npm run build
 ```

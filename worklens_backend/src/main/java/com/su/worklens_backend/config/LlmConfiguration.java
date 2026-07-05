@@ -7,6 +7,8 @@ import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.Duration;
+
 @Configuration
 public class LlmConfiguration {
 
@@ -15,8 +17,18 @@ public class LlmConfiguration {
             RestTemplateBuilder restTemplateBuilder,
             @Value("${worklens.llm.deepseek.base-url}") String baseUrl,
             @Value("${worklens.llm.deepseek.api-key:}") String apiKey,
-            @Value("${worklens.llm.deepseek.model}") String model
+            @Value("${worklens.llm.deepseek.model}") String model,
+            @Value("${worklens.llm.deepseek.connect-timeout}") Duration connectTimeout,
+            @Value("${worklens.llm.deepseek.read-timeout}") Duration readTimeout
     ) {
-        return new DeepSeekLlmProvider(restTemplateBuilder.build(), baseUrl, apiKey, model);
+        return new DeepSeekLlmProvider(
+                restTemplateBuilder
+                        .setConnectTimeout(connectTimeout)
+                        .setReadTimeout(readTimeout)
+                        .build(),
+                baseUrl,
+                apiKey,
+                model
+        );
     }
 }

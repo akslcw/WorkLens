@@ -1,17 +1,25 @@
 package com.su.worklens_backend;
 
+import com.su.worklens_backend.exception.LlmProviderException;
+import com.su.worklens_backend.exception.LlmProviderTimeoutException;
 import com.su.worklens_backend.service.impl.DeepSeekLlmProvider;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.SocketTimeoutException;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class DeepSeekLlmProviderTests {
@@ -58,5 +66,53 @@ class DeepSeekLlmProviderTests {
 
         assertThat(response).isEqualTo("This is the generated response.");
         server.verify();
+    }
+
+    @Test
+    void generateTextWrapsTimeoutAsLlmProviderTimeoutException() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        DeepSeekLlmProvider provider = new DeepSeekLlmProvider(
+                restTemplate,
+                "https://api.deepseek.com",
+                "test-api-key",
+                "deepseek-v4-flash"
+        );
+
+        server.expect(requestTo("https://api.deepseek.com/chat/completions"))
+                .andRespond(request -> {
+                    throw new ResourceAccessException("Read timed out", new SocketTimeoutException("Read timed out"));
+                });
+
+        assertThatThrownBy(() -> provider.generateText("timeout prompt"))
+                .isInstanceOf(LlmProviderTimeoutException.class)
+                .hasMessage("DeepSeek API request timed out");
+    }
+
+    @Test
+    void generateTextWrapsHttpFailureAsLlmProviderException() {
+        RestTemplate restTemplate = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(restTemplate).build();
+        DeepSeekLlmProvider provider = new DeepSeekLlmProvider(
+                restTemplate,
+                "https://api.deepseek.com",
+                "test-api-key",
+                "deepseek-v4-flash"
+        );
+
+        server.expect(requestTo("https://api.deepseek.com/chat/completions"))
+                .andRespond(withStatus(HttpStatus.BAD_GATEWAY)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body("""
+                                {
+                                  "error": {
+                                    "message": "upstream failed"
+                                  }
+                                }
+                                """));
+
+        assertThatThrownBy(() -> provider.generateText("server error prompt"))
+                .isInstanceOf(LlmProviderException.class)
+                .hasMessage("DeepSeek API request failed");
     }
 }
