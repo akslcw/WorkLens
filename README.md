@@ -13,11 +13,12 @@ WorkLens 是一个面向团队的员工应用使用效率分析系统原型。
 当前仓库为单体应用，包含：
 - `worklens_backend`：Spring Boot + MyBatis-Plus + PostgreSQL
 - `worklens_frontend`：Vue 3 + TypeScript + Vite
+- `worklens_desktop_client`：Windows Python 桌面采集客户端
 - `compose.yml`：本地 PostgreSQL 开发环境
 
 ## 当前完成程度
 
-当前已完成到模块 13，后端和前端基础链路已跑通：
+当前已完成到模块 17，后端、前端、桌面客户端基础链路已跑通：
 - 后端可启动，`GET /health` 可用
 - PostgreSQL 可通过 Docker Compose 一键启动
 - 员工档案 CRUD 已完成，且仅管理者可访问
@@ -29,6 +30,14 @@ WorkLens 是一个面向团队的员工应用使用效率分析系统原型。
 - 审计授权流程已完成：管理者可发起明细查看申请，员工本人可批准或拒绝，批准后管理者可一次性查看明细，并可查询对应访问审计日志
 - 管理者可查询自己发起过的全部明细查看申请及其状态
 - 员工可查询所有“指向自己”的明细查看申请记录，并区分“已批准但未查看”与“已批准且已查看”
+- Windows 桌面采集客户端已完成：
+  - 员工账号登录后可真实调用 `/auth/login`
+  - 可自动采集当前前台应用的进程名
+  - 可将连续使用同一应用的时间段合并成记录
+  - 可将长时间无键鼠操作单独记为 `Idle`
+  - 默认每 5 分钟批量上报一次
+  - 上报失败时会写入本地 SQLite，恢复后自动补传
+  - 已提供最小系统托盘图标，显示“运行中/已停止”状态
 
 当前仍是 MVP/原型版本，不是完整产品。
 
@@ -39,7 +48,8 @@ worklens/
 |-- compose.yml
 |-- .env.example
 |-- worklens_backend/
-`-- worklens_frontend/
+|-- worklens_frontend/
+`-- worklens_desktop_client/
 ```
 
 ## 启动方式
@@ -106,6 +116,48 @@ npm run dev
 ```text
 http://localhost:5173
 ```
+
+### 4. 启动 Windows 桌面采集客户端
+
+先安装依赖：
+
+```powershell
+python -m pip install -r worklens_desktop_client/requirements.txt
+```
+
+手动登录并上报一条记录：
+
+```powershell
+python -m worklens_desktop_client.manual_report --base-url http://localhost:8080
+```
+
+仅本地采集并输出合并后的记录：
+
+```powershell
+python -m worklens_desktop_client.collect_activity
+```
+
+持续采集并按周期自动上报：
+
+```powershell
+python -m worklens_desktop_client.run_sync_client --base-url http://localhost:8080
+```
+
+以系统托盘方式运行：
+
+```powershell
+pythonw -m worklens_desktop_client.tray_app
+```
+
+## 桌面客户端关键参数
+
+当前客户端的默认策略如下：
+- 采样频率：每 `5` 秒检测一次当前前台应用
+- 采集内容：只采集应用名/进程名，不采集窗口标题，不做域名级追踪
+- 空闲判定：连续 `5` 分钟无键鼠操作视为 `Idle`
+- 空闲处理：空闲时间单独记录为一条 `Idle` 记录，不跳过
+- 上报周期：每 `5` 分钟批量上报一次
+- 失败重试：上报失败时写入本地 SQLite，后续恢复连接后自动补传
 
 ## 当前主要能力
 
@@ -175,7 +227,7 @@ http://localhost:5173
 这意味着：
 - 数据库表会由后端启动时自动创建
 - 登录账号、员工档案、使用记录、审计申请记录，需要自行准备测试数据
-- 现有集成测试里包含完整的测试数据构造逻辑，可作为参考
+- 现有集成测试和客户端单元测试里包含完整的测试数据构造逻辑，可作为参考
 
 ## 已知限制
 
@@ -206,6 +258,15 @@ cd worklens_backend
 ```powershell
 cd worklens_frontend
 npm test
+```
+
+桌面客户端测试：
+
+```powershell
+python -m unittest worklens_desktop_client.tests.test_api_client
+python -m unittest worklens_desktop_client.tests.test_activity_tracker
+python -m unittest worklens_desktop_client.tests.test_sync_service
+python -m unittest worklens_desktop_client.tests.test_background_runner
 ```
 
 前端构建：

@@ -2,15 +2,10 @@ from __future__ import annotations
 
 import argparse
 import getpass
-import time
-from datetime import datetime
 from pathlib import Path
 
-from worklens_desktop_client.activity_tracker import ActivityTracker
-from worklens_desktop_client.api_client import WorkLensApiClient
-from worklens_desktop_client.local_store import LocalRecordStore
-from worklens_desktop_client.sync_service import SyncService
-from worklens_desktop_client.windows_activity import Win32ActivityProbe
+from worklens_desktop_client.sync_runtime import SyncRuntime
+from worklens_desktop_client.sync_runtime import SyncRuntimeConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,64 +48,30 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
-def flush_records(sync_service: SyncService, token: str, tracker: ActivityTracker, flush_at: datetime) -> None:
-    records = tracker.cutoff(flush_at)
-    report = sync_service.upload_batch(token, records)
-    print(
-        f"[{flush_at.isoformat(timespec='seconds')}] "
-        f"flush complete: uploaded={report.uploaded_count}, cached={report.cached_count}"
-    )
-
-
 def main() -> None:
     args = parse_args()
-    client = WorkLensApiClient(args.base_url)
-    tracker = ActivityTracker()
-    probe = Win32ActivityProbe(idle_threshold_seconds=args.idle_threshold_seconds)
-    store = LocalRecordStore(args.cache_db)
-    sync_service = SyncService(client, store)
-
     username = input("Username: ").strip()
     password = getpass.getpass("Password: ")
-    login_result = client.login(username, password)
-    if login_result.role != "EMPLOYEE":
-        raise SystemExit("Only EMPLOYEE accounts can run the desktop collector.")
-
-    print(f"Login succeeded for {login_result.username} ({login_result.role}).")
-    startup_report = sync_service.upload_batch(login_result.token, [])
-    print(f"Startup retry complete: uploaded={startup_report.uploaded_count}, cached={startup_report.cached_count}")
-
-    started_at = time.time()
-    next_upload_at = time.time() + args.upload_interval_seconds
-
-    print(
-        "Running sync client. "
-        f"sample_interval={args.sample_interval_seconds}s, "
-        f"idle_threshold={args.idle_threshold_seconds}s, "
-        f"upload_interval={args.upload_interval_seconds}s. "
-        "Press Ctrl+C to stop."
+    runtime = SyncRuntime(
+        SyncRuntimeConfig(
+            base_url=args.base_url,
+            sample_interval_seconds=args.sample_interval_seconds,
+            idle_threshold_seconds=args.idle_threshold_seconds,
+            upload_interval_seconds=args.upload_interval_seconds,
+            cache_db=args.cache_db,
+        )
     )
-
     try:
-        while True:
-            observed_at = datetime.now().replace(microsecond=0)
-            app_name = probe.sample_app_name()
-            tracker.observe(app_name, observed_at)
-            print(f"[{observed_at.isoformat(timespec='seconds')}] sampled {app_name}")
+        import threading
 
-            if time.time() >= next_upload_at:
-                flush_records(sync_service, login_result.token, tracker, observed_at)
-                next_upload_at = time.time() + args.upload_interval_seconds
-
-            if args.duration_seconds is not None and time.time() - started_at >= args.duration_seconds:
-                break
-            time.sleep(args.sample_interval_seconds)
+        runtime.run(
+            username=username,
+            password=password,
+            stop_event=threading.Event(),
+            duration_seconds=args.duration_seconds,
+        )
     except KeyboardInterrupt:
         print("Stopping sync client.")
-
-    finished_at = datetime.now().replace(microsecond=0)
-    flush_records(sync_service, login_result.token, tracker, finished_at)
 
 
 if __name__ == "__main__":
