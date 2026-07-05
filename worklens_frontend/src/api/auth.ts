@@ -1,3 +1,4 @@
+import type { RouteRole } from '../auth/types'
 import { request } from './http'
 
 export type LoginPayload = {
@@ -8,13 +9,13 @@ export type LoginPayload = {
 export type AuthSession = {
   token: string
   username: string
-  role: 'MANAGER' | 'EMPLOYEE'
+  role: RouteRole
 }
 
 export type CurrentUser = {
   employeeId: number
   username: string
-  role: 'MANAGER' | 'EMPLOYEE'
+  role: RouteRole
 }
 
 export async function login(payload: LoginPayload) {

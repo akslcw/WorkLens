@@ -1,157 +1,148 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createMemoryHistory } from 'vue-router'
 import App from './App.vue'
+import { resolveHomePath } from './auth/session'
+import type { RouteRole } from './auth/types'
+import { createAppRouter } from './router'
 
-describe('App', () => {
+const SESSION_STORAGE_KEY = 'worklens-session'
+
+describe('App routing', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.unstubAllGlobals()
   })
 
-  it('logs in as manager and renders the team summary view', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input)
-        const method = init?.method ?? 'GET'
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
 
-        if (url.endsWith('/auth/login') && method === 'POST') {
-          return new Response(
-            JSON.stringify({
-              token: 'manager-token',
-              username: 'manager',
-              role: 'MANAGER',
-            }),
-            { status: 200 },
-          )
-        }
+  it('redirects unauthenticated users from business routes to login', async () => {
+    const router = createAppRouter(createMemoryHistory())
+    router.push('/manager')
+    await router.isReady()
 
-        if (url.endsWith('/auth/me') && method === 'GET') {
-          expect(init?.headers).toMatchObject({
-            Authorization: 'Bearer manager-token',
-          })
+    mount(App, {
+      global: {
+        plugins: [router],
+      },
+    })
 
-          return new Response(
-            JSON.stringify({
-              employeeId: 1,
-              username: 'manager',
-              role: 'MANAGER',
-            }),
-            { status: 200 },
-          )
-        }
+    await flushPromises()
 
-        if (url.endsWith('/team-usage-summary') && method === 'GET') {
-          expect(init?.headers).toMatchObject({
-            Authorization: 'Bearer manager-token',
-          })
+    expect(router.currentRoute.value.fullPath).toBe('/login')
+  })
 
-          return new Response(
-            JSON.stringify({
-              teamAverageUsageMinutes: 67.5,
-              totalUsageMinutes: 135,
-              activeEmployeeCount: 2,
-              appUsageRatios: [
-                { appName: 'Slack', usageMinutes: 75, usageRatio: 0.5556 },
-                { appName: 'Chrome', usageMinutes: 60, usageRatio: 0.4444 },
-              ],
-            }),
-            { status: 200 },
-          )
-        }
+  it('routes manager login to the manager home page', async () => {
+    stubLoginFetch({
+      token: 'manager-token',
+      username: 'manager',
+      role: 'MANAGER',
+    })
 
-        return new Response(null, { status: 404 })
-      }),
-    )
-
-    const wrapper = mount(App)
+    const { router, wrapper } = await mountAppAt('/login')
 
     await wrapper.get('[data-test="username-input"]').setValue('manager')
     await wrapper.get('[data-test="password-input"]').setValue('Password123!')
     await wrapper.get('[data-test="login-form"]').trigger('submit')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Team Aggregate View')
-    expect(wrapper.text()).toContain('67.5 min')
-    expect(wrapper.text()).toContain('135 min')
-    expect(wrapper.text()).toContain('Slack')
-    expect(wrapper.text()).toContain('55.56%')
+    expect(router.currentRoute.value.fullPath).toBe('/manager')
+    expect(wrapper.text()).toContain('团队视角占位页')
+    expect(wrapper.text()).toContain('Manager Home')
+    expect(JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) ?? '{}')).toMatchObject({
+      token: 'manager-token',
+      role: 'MANAGER',
+    })
   })
 
-  it('logs in as employee and renders the personal usage detail view', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input)
-        const method = init?.method ?? 'GET'
+  it('routes employee login to the employee home page', async () => {
+    stubLoginFetch({
+      token: 'employee-token',
+      username: 'employee.alice',
+      role: 'EMPLOYEE',
+    })
 
-        if (url.endsWith('/auth/login') && method === 'POST') {
-          return new Response(
-            JSON.stringify({
-              token: 'employee-token',
-              username: 'employee.alice',
-              role: 'EMPLOYEE',
-            }),
-            { status: 200 },
-          )
-        }
-
-        if (url.endsWith('/auth/me') && method === 'GET') {
-          expect(init?.headers).toMatchObject({
-            Authorization: 'Bearer employee-token',
-          })
-
-          return new Response(
-            JSON.stringify({
-              employeeId: 2,
-              username: 'employee.alice',
-              role: 'EMPLOYEE',
-            }),
-            { status: 200 },
-          )
-        }
-
-        if (url.endsWith('/usage-records') && method === 'GET') {
-          expect(init?.headers).toMatchObject({
-            Authorization: 'Bearer employee-token',
-          })
-
-          return new Response(
-            JSON.stringify([
-              {
-                id: 1,
-                appName: 'Slack',
-                startedAt: '2026-07-03T09:00:00',
-                endedAt: '2026-07-03T09:30:00',
-                createdAt: '2026-07-03T09:31:00',
-              },
-              {
-                id: 2,
-                appName: 'Chrome',
-                startedAt: '2026-07-03T10:00:00',
-                endedAt: '2026-07-03T11:00:00',
-                createdAt: '2026-07-03T11:01:00',
-              },
-            ]),
-            { status: 200 },
-          )
-        }
-
-        return new Response(null, { status: 404 })
-      }),
-    )
-
-    const wrapper = mount(App)
+    const { router, wrapper } = await mountAppAt('/login')
 
     await wrapper.get('[data-test="username-input"]').setValue('employee.alice')
     await wrapper.get('[data-test="password-input"]').setValue('Password123!')
     await wrapper.get('[data-test="login-form"]').trigger('submit')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Personal Detail View')
-    expect(wrapper.text()).toContain('Slack')
-    expect(wrapper.text()).toContain('Chrome')
-    expect(wrapper.text()).toContain('90 min total')
-    expect(wrapper.text()).toContain('2026/07/03')
+    expect(router.currentRoute.value.fullPath).toBe('/employee')
+    expect(wrapper.text()).toContain('个人视角占位页')
+    expect(wrapper.text()).toContain('Employee Home')
+    expect(JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) ?? '{}')).toMatchObject({
+      token: 'employee-token',
+      role: 'EMPLOYEE',
+    })
+  })
+
+  it('restores an existing manager session and allows protected routes', async () => {
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({
+        token: 'stored-manager-token',
+        username: 'manager',
+        role: 'MANAGER',
+      }),
+    )
+
+    const router = createAppRouter(createMemoryHistory())
+    router.push('/manager')
+    await router.isReady()
+
+    const wrapper = mount(App, {
+      global: {
+        plugins: [router],
+      },
+    })
+
+    await flushPromises()
+
+    expect(router.currentRoute.value.fullPath).toBe('/manager')
+    expect(wrapper.text()).toContain('团队视角占位页')
   })
 })
+
+describe('route role mapping', () => {
+  it('maps backend roles to frontend landing pages', () => {
+    expect(resolveHomePath('MANAGER')).toBe('/manager')
+    expect(resolveHomePath('EMPLOYEE')).toBe('/employee')
+  })
+})
+
+async function mountAppAt(path: string) {
+  const router = createAppRouter(createMemoryHistory())
+  router.push(path)
+  await router.isReady()
+
+  const wrapper = mount(App, {
+    global: {
+      plugins: [router],
+    },
+  })
+
+  return { router, wrapper }
+}
+
+function stubLoginFetch(session: { token: string; username: string; role: RouteRole }) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+
+      if (url.endsWith('/auth/login') && method === 'POST') {
+        return new Response(JSON.stringify(session), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      return new Response(null, { status: 404 })
+    }),
+  )
+}
