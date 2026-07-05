@@ -49,6 +49,32 @@ class ActivityTrackerTests(unittest.TestCase):
         self.assertEqual(datetime.fromisoformat("2026-07-04T13:05:00"), records[1].started_at)
         self.assertEqual(datetime.fromisoformat("2026-07-04T13:05:10"), records[1].ended_at)
 
+    def test_cutoff_splits_current_record_and_keeps_tracking_same_app(self) -> None:
+        tracker = ActivityTracker()
+
+        tracker.observe("chrome.exe", datetime.fromisoformat("2026-07-04T13:00:00"))
+        flushed_records = tracker.cutoff(datetime.fromisoformat("2026-07-04T13:05:00"))
+        tracker.observe("chrome.exe", datetime.fromisoformat("2026-07-04T13:05:05"))
+        remaining_records = tracker.finish(datetime.fromisoformat("2026-07-04T13:05:10"))
+
+        self.assertEqual(1, len(flushed_records))
+        self.assertEqual("chrome.exe", flushed_records[0].app_name)
+        self.assertEqual(datetime.fromisoformat("2026-07-04T13:00:00"), flushed_records[0].started_at)
+        self.assertEqual(datetime.fromisoformat("2026-07-04T13:05:00"), flushed_records[0].ended_at)
+
+        self.assertEqual(1, len(remaining_records))
+        self.assertEqual("chrome.exe", remaining_records[0].app_name)
+        self.assertEqual(datetime.fromisoformat("2026-07-04T13:05:00"), remaining_records[0].started_at)
+        self.assertEqual(datetime.fromisoformat("2026-07-04T13:05:10"), remaining_records[0].ended_at)
+
+    def test_finish_skips_zero_length_record(self) -> None:
+        tracker = ActivityTracker()
+
+        tracker.observe("chrome.exe", datetime.fromisoformat("2026-07-04T13:00:00"))
+        records = tracker.finish(datetime.fromisoformat("2026-07-04T13:00:00"))
+
+        self.assertEqual([], records)
+
 
 if __name__ == "__main__":
     unittest.main()
