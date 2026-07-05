@@ -35,7 +35,7 @@ describe('App routing', () => {
   })
 
   it('routes manager login to the manager home page', async () => {
-    stubLoginFetch({
+    stubManagerLoginFetch({
       token: 'manager-token',
       username: 'manager',
       role: 'MANAGER',
@@ -49,8 +49,8 @@ describe('App routing', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.fullPath).toBe('/manager')
-    expect(wrapper.text()).toContain('团队视角占位页')
-    expect(wrapper.text()).toContain('Manager Home')
+    expect(wrapper.text()).toContain('员工档案管理')
+    expect(wrapper.text()).toContain('No employees yet')
     expect(JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) ?? '{}')).toMatchObject({
       token: 'manager-token',
       role: 'MANAGER',
@@ -58,7 +58,7 @@ describe('App routing', () => {
   })
 
   it('routes employee login to the employee home page', async () => {
-    stubLoginFetch({
+    stubEmployeeLoginFetch({
       token: 'employee-token',
       username: 'employee.alice',
       role: 'EMPLOYEE',
@@ -89,6 +89,7 @@ describe('App routing', () => {
         role: 'MANAGER',
       }),
     )
+    stubStoredManagerFetch()
 
     const router = createAppRouter(createMemoryHistory())
     router.push('/manager')
@@ -103,7 +104,7 @@ describe('App routing', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.fullPath).toBe('/manager')
-    expect(wrapper.text()).toContain('团队视角占位页')
+    expect(wrapper.text()).toContain('员工档案管理')
   })
 })
 
@@ -128,7 +129,52 @@ async function mountAppAt(path: string) {
   return { router, wrapper }
 }
 
-function stubLoginFetch(session: { token: string; username: string; role: RouteRole }) {
+function stubManagerLoginFetch(session: { token: string; username: string; role: RouteRole }) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+
+      if (url.endsWith('/auth/login') && method === 'POST') {
+        return new Response(JSON.stringify(session), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      if (url.endsWith('/api/employees') && method === 'GET') {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      return new Response(null, { status: 404 })
+    }),
+  )
+}
+
+function stubStoredManagerFetch() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
+
+      if (url.endsWith('/api/employees') && method === 'GET') {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      return new Response(null, { status: 404 })
+    }),
+  )
+}
+
+function stubEmployeeLoginFetch(session: { token: string; username: string; role: RouteRole }) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

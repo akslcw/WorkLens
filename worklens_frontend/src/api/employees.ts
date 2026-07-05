@@ -1,3 +1,5 @@
+import { request } from './http'
+
 export type Employee = {
   id: number
   name: string
@@ -10,41 +12,19 @@ export type EmployeePayload = {
   employeeNo: string
 }
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api'
-
-export async function getEmployees() {
-  return request<Employee[]>('/employees')
+export async function getEmployees(token: string) {
+  return request<Employee[]>('/employees', { method: 'GET' }, token)
 }
 
-export async function createEmployee(payload: EmployeePayload) {
+export async function createEmployee(payload: EmployeePayload, token: string) {
   return request<Employee>('/employees', {
     method: 'POST',
     body: JSON.stringify(payload),
-  })
+  }, token)
 }
 
-export async function deleteEmployee(id: number) {
+export async function deleteEmployee(id: number, token: string) {
   await request<void>(`/employees/${id}`, {
     method: 'DELETE',
-  })
-}
-
-async function request<T>(path: string, init?: RequestInit) {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  })
-
-  if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`)
-  }
-
-  if (response.status === 204) {
-    return undefined as T
-  }
-
-  return (await response.json()) as T
+  }, token)
 }
