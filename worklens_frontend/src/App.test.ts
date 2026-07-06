@@ -34,6 +34,18 @@ describe('App routing', () => {
     expect(router.currentRoute.value.fullPath).toBe('/login')
   })
 
+  it('shows a minimal employee login page without marketing copy', async () => {
+    const { wrapper } = await mountAppAt('/login')
+
+    expect(wrapper.text()).toContain('WorkLens 登录')
+    expect(wrapper.get('[data-test="username-input"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="password-input"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="login-form"]').text()).toContain('登录')
+    expect(wrapper.text()).not.toContain('把权限边界做成真正可点击的前端入口')
+    expect(wrapper.text()).not.toContain('团队聚合')
+    expect(wrapper.text()).not.toContain('个人明细')
+  })
+
   it('routes manager login to the manager home page', async () => {
     stubManagerLoginFetch({
       token: 'manager-token',
