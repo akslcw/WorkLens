@@ -35,12 +35,19 @@ html {
 
 body {
   margin: 0;
+  caret-color: transparent;
 }
 
 button,
 input,
 textarea {
   font: inherit;
+}
+
+input,
+textarea {
+  caret-color: auto;
+  cursor: text;
 }
 
 button,

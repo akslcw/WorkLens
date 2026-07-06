@@ -45,6 +45,9 @@ public class TeamReportServiceImpl implements TeamReportService {
 
         return """
                 You are writing a concise team usage briefing for a WorkLens manager.
+                Write the report in Chinese by default.
+                Return plain text only.
+                Do not use Markdown, bullet syntax, headings, bold markers, tables, or code fences.
                 Use only the aggregated metrics below.
                 Do not invent or infer any individual employee detail.
                 Do not mention names, employee identifiers, usernames, or raw activity records.

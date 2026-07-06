@@ -85,6 +85,9 @@ class TeamReportControllerIntegrationTests extends PostgresIntegrationTestSuppor
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(llmProvider).generateText(promptCaptor.capture());
         String prompt = promptCaptor.getValue();
+        assertThat(prompt).contains("Write the report in Chinese");
+        assertThat(prompt).contains("plain text only");
+        assertThat(prompt).contains("Do not use Markdown");
         assertThat(prompt).contains("teamAverageUsageMinutes: 67.5");
         assertThat(prompt).contains("totalUsageMinutes: 135");
         assertThat(prompt).contains("activeEmployeeCount: 2");

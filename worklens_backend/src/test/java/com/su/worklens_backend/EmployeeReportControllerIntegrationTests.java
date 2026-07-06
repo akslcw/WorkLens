@@ -87,6 +87,9 @@ class EmployeeReportControllerIntegrationTests extends PostgresIntegrationTestSu
         verify(llmProvider).generateText(promptCaptor.capture());
         String prompt = promptCaptor.getValue();
         assertThat(prompt).contains("encouraging");
+        assertThat(prompt).contains("Write the report in Chinese");
+        assertThat(prompt).contains("plain text only");
+        assertThat(prompt).contains("Do not use Markdown");
         assertThat(prompt).contains("Slack");
         assertThat(prompt).contains("Chrome");
         assertThat(prompt).doesNotContain("LegacyApp");

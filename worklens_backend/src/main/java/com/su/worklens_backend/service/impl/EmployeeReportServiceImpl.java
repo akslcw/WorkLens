@@ -84,7 +84,10 @@ public class EmployeeReportServiceImpl implements EmployeeReportService {
 
         return """
                 You are writing an encouraging weekly personal productivity summary for a WorkLens employee.
+                Write the report in Chinese by default.
                 Keep the tone supportive, practical, and concise.
+                Return plain text only.
+                Do not use Markdown, bullet syntax, headings, bold markers, tables, or code fences.
                 Do not mention any other employees or team-level comparisons.
 
                 Employee username: %s

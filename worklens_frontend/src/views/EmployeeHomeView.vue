@@ -431,10 +431,20 @@ function toErrorMessage(error: unknown, fallback: string) {
 .report-card {
   margin-top: 18px;
   padding: 18px 20px;
+  height: auto;
+  min-width: 0;
+  overflow: visible;
 }
 
 .report-card--current {
   background: #f8fafc;
+}
+
+.report-card p,
+.history-row strong {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .history-row {
