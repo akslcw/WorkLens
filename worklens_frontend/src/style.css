@@ -1,7 +1,20 @@
 :root {
-  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  color: #1f2937;
-  background: #f7f1e8;
+  --wl-ink: #1d2e47;
+  --wl-ink-soft: #42566f;
+  --wl-muted: #5d6e83;
+  --wl-blue-50: #e3ebf4;
+  --wl-mist: #edf2f6;
+  --wl-sand: #f7f1e8;
+  --wl-copper: #c17d3f;
+  --wl-card: rgba(255, 255, 255, 0.82);
+  --wl-border: rgba(29, 46, 71, 0.12);
+  --wl-shadow: 0 24px 64px rgba(73, 86, 108, 0.14);
+  --wl-radius-xl: 30px;
+  --wl-font-sans: 'Aptos', 'Microsoft YaHei UI', 'PingFang SC', sans-serif;
+  --wl-font-display: Georgia, 'Palatino Linotype', serif;
+  font-family: var(--wl-font-sans);
+  color: var(--wl-ink);
+  background: var(--wl-sand);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -27,10 +40,30 @@ textarea {
   font: inherit;
 }
 
+button,
+a,
+input,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(193, 125, 63, 0.32);
+  outline-offset: 3px;
+}
+
 a {
   color: inherit;
 }
 
 #app {
   min-height: 100vh;
+}
+
+::selection {
+  background: rgba(193, 125, 63, 0.22);
+  color: var(--wl-ink);
 }
