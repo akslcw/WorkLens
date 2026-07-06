@@ -72,8 +72,8 @@ describe('App routing', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.fullPath).toBe('/employee')
-    expect(wrapper.text()).toContain('个人视角占位页')
-    expect(wrapper.text()).toContain('Employee Home')
+    expect(wrapper.text()).toContain('个人效率面板')
+    expect(wrapper.text()).toContain('暂无个人使用记录')
     expect(JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) ?? '{}')).toMatchObject({
       token: 'employee-token',
       role: 'EMPLOYEE',
@@ -183,6 +183,20 @@ function stubEmployeeLoginFetch(session: { token: string; username: string; role
 
       if (url.endsWith('/auth/login') && method === 'POST') {
         return new Response(JSON.stringify(session), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      if (url.endsWith('/api/usage-records') && method === 'GET') {
+        return new Response(JSON.stringify([]), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      if (url.endsWith('/api/llm/employee-report-history') && method === 'GET') {
+        return new Response(JSON.stringify([]), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })
