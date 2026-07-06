@@ -245,10 +245,9 @@ function toErrorMessage(error: unknown, fallback: string) {
 .hero-card,
 .metric-card,
 .panel-card {
-  border-radius: 30px;
+  border-radius: 12px;
   border: 1px solid rgba(29, 46, 71, 0.12);
-  box-shadow: 0 24px 64px rgba(73, 86, 108, 0.14);
-  backdrop-filter: blur(16px);
+  box-shadow: var(--wl-shadow);
 }
 
 .hero-card {
@@ -256,17 +255,14 @@ function toErrorMessage(error: unknown, fallback: string) {
   justify-content: space-between;
   align-items: end;
   gap: 20px;
-  padding: 30px 32px;
-  background:
-    radial-gradient(circle at 18% 18%, rgba(106, 145, 189, 0.28), transparent 28%),
-    radial-gradient(circle at 88% 24%, rgba(235, 190, 129, 0.24), transparent 32%),
-    linear-gradient(145deg, rgba(245, 249, 255, 0.94), rgba(239, 246, 252, 0.9));
+  padding: 24px 26px;
+  background: #ffffff;
 }
 
 .eyebrow {
   margin: 0 0 10px;
-  color: #7b5d3d;
-  letter-spacing: 0.16em;
+  color: var(--wl-copper);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 0.76rem;
 }
@@ -278,13 +274,12 @@ function toErrorMessage(error: unknown, fallback: string) {
 .history-meta strong,
 .session-pill strong {
   margin: 0;
-  font-family: Georgia, 'Palatino Linotype', serif;
-  letter-spacing: -0.04em;
   color: #1d2e47;
 }
 
 .hero-card h1 {
-  font-size: clamp(2.5rem, 4vw, 4.8rem);
+  font-size: 2rem;
+  line-height: 1.2;
 }
 
 .hero-copy,
@@ -300,7 +295,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 }
 
 .hero-copy {
-  margin-top: 14px;
+  margin-top: 8px;
   max-width: 620px;
 }
 
@@ -319,7 +314,7 @@ function toErrorMessage(error: unknown, fallback: string) {
   gap: 4px;
   padding: 14px 16px;
   min-width: 200px;
-  border-radius: 22px;
+  border-radius: 10px;
   background: rgba(29, 46, 71, 0.92);
   color: rgba(238, 245, 252, 0.84);
 }
@@ -338,7 +333,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .metric-card {
   padding: 24px;
-  background: rgba(255, 255, 255, 0.82);
+  background: #ffffff;
 }
 
 .metric-label {
@@ -352,7 +347,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .metric-card strong {
   display: block;
-  font-size: clamp(2rem, 3vw, 3.2rem);
+  font-size: 2rem;
 }
 
 .content-grid {
@@ -364,7 +359,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .panel-card {
   padding: 24px;
-  background: rgba(255, 255, 255, 0.82);
+  background: #ffffff;
 }
 
 .panel-head,
@@ -385,13 +380,13 @@ function toErrorMessage(error: unknown, fallback: string) {
 }
 
 .panel-head h2 {
-  font-size: 2rem;
+  font-size: 1.35rem;
 }
 
 .primary-button,
 .ghost-button {
   border: none;
-  border-radius: 999px;
+  border-radius: 8px;
   cursor: pointer;
   transition: transform 0.2s ease, opacity 0.2s ease;
   font-size: 0.95rem;
@@ -399,13 +394,13 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .primary-button {
   padding: 14px 18px;
-  background: linear-gradient(135deg, #1d2e47 0%, #35506b 58%, #b98248 100%);
-  color: #faf7f1;
+  background: #1d2e47;
+  color: #ffffff;
 }
 
 .ghost-button {
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.74);
+  background: #ffffff;
   border: 1px solid rgba(29, 46, 71, 0.14);
   color: #1d2e47;
 }
@@ -424,7 +419,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 .feedback {
   margin-top: 18px;
   padding: 15px 16px;
-  border-radius: 18px;
+  border-radius: 8px;
   background: #edf3f9;
 }
 
@@ -446,9 +441,9 @@ function toErrorMessage(error: unknown, fallback: string) {
 .history-row,
 .report-card,
 .empty-state {
-  border-radius: 22px;
+  border-radius: 10px;
   border: 1px solid #dbe4ee;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.96));
+  background: #ffffff;
 }
 
 .ratio-row {
@@ -480,7 +475,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 .meter-fill {
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #1d2e47 0%, #b98248 100%);
+  background: var(--wl-copper);
 }
 
 .report-card {
@@ -489,7 +484,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 }
 
 .report-card--current {
-  background: linear-gradient(145deg, rgba(255, 249, 242, 0.98), rgba(239, 246, 252, 0.96));
+  background: #f8fafc;
 }
 
 .history-row {

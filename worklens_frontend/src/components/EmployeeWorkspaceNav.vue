@@ -31,20 +31,17 @@ defineProps<{
   grid-auto-flow: column;
   align-items: center;
   gap: 10px;
-  padding: 8px;
+  padding: 4px;
   width: fit-content;
-  border-radius: 24px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(242, 247, 251, 0.72)),
-    rgba(255, 255, 255, 0.72);
+  border-radius: 10px;
+  background: #f8fafc;
   border: 1px solid rgba(29, 46, 71, 0.12);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 14px 34px rgba(73, 86, 108, 0.1);
 }
 
 .workspace-link {
   position: relative;
-  padding: 11px 17px;
-  border-radius: 18px;
+  padding: 9px 13px;
+  border-radius: 8px;
   text-decoration: none;
   color: #42566f;
   font-size: 0.92rem;
@@ -60,14 +57,13 @@ defineProps<{
 .workspace-link--active {
   background: #1d2e47;
   color: #eef5fc;
-  box-shadow: 0 10px 24px rgba(29, 46, 71, 0.2);
 }
 
 @media (max-width: 720px) {
   .workspace-nav {
     grid-auto-flow: row;
     width: 100%;
-    border-radius: 22px;
+    border-radius: 10px;
   }
 
   .workspace-link {

@@ -216,10 +216,9 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .hero-card,
 .panel-card {
-  border-radius: 30px;
+  border-radius: 12px;
   border: 1px solid rgba(29, 46, 71, 0.12);
-  box-shadow: 0 24px 64px rgba(73, 86, 108, 0.14);
-  backdrop-filter: blur(16px);
+  box-shadow: var(--wl-shadow);
 }
 
 .hero-card {
@@ -227,16 +226,14 @@ function toErrorMessage(error: unknown, fallback: string) {
   justify-content: space-between;
   align-items: end;
   gap: 20px;
-  padding: 30px 32px;
-  background:
-    radial-gradient(circle at 18% 18%, rgba(109, 145, 189, 0.26), transparent 26%),
-    linear-gradient(145deg, rgba(245, 249, 255, 0.94), rgba(236, 243, 251, 0.92));
+  padding: 24px 26px;
+  background: #ffffff;
 }
 
 .eyebrow {
   margin: 0 0 10px;
-  color: #4c6d96;
-  letter-spacing: 0.16em;
+  color: var(--wl-copper);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 0.76rem;
 }
@@ -247,13 +244,12 @@ function toErrorMessage(error: unknown, fallback: string) {
 .request-head strong,
 .empty-state strong {
   margin: 0;
-  font-family: Georgia, 'Palatino Linotype', serif;
-  letter-spacing: -0.04em;
   color: #1d2e47;
 }
 
 .hero-card h1 {
-  font-size: clamp(2.4rem, 4vw, 4.6rem);
+  font-size: 2rem;
+  line-height: 1.2;
 }
 
 .hero-copy,
@@ -267,7 +263,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 }
 
 .hero-copy {
-  margin-top: 14px;
+  margin-top: 8px;
   max-width: 620px;
 }
 
@@ -286,7 +282,7 @@ function toErrorMessage(error: unknown, fallback: string) {
   gap: 4px;
   padding: 14px 16px;
   min-width: 220px;
-  border-radius: 22px;
+  border-radius: 10px;
   background: rgba(29, 46, 71, 0.92);
   color: rgba(238, 245, 252, 0.84);
 }
@@ -299,7 +295,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 .panel-card {
   margin-top: 22px;
   padding: 24px;
-  background: rgba(255, 255, 255, 0.82);
+  background: #ffffff;
 }
 
 .panel-head {
@@ -311,14 +307,14 @@ function toErrorMessage(error: unknown, fallback: string) {
 }
 
 .panel-head h2 {
-  font-size: 2rem;
+  font-size: 1.35rem;
 }
 
 .ghost-button,
 .approve-button,
 .reject-button {
   border: none;
-  border-radius: 999px;
+  border-radius: 8px;
   cursor: pointer;
   transition: transform 0.2s ease, opacity 0.2s ease;
   font-size: 0.95rem;
@@ -326,7 +322,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .ghost-button {
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.74);
+  background: #ffffff;
   border: 1px solid rgba(29, 46, 71, 0.14);
   color: #1d2e47;
 }
@@ -362,7 +358,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 .feedback {
   margin-top: 18px;
   padding: 15px 16px;
-  border-radius: 18px;
+  border-radius: 8px;
   background: #edf3f9;
 }
 
@@ -375,7 +371,7 @@ function toErrorMessage(error: unknown, fallback: string) {
   display: grid;
   gap: 10px;
   padding: 24px;
-  border-radius: 22px;
+  border-radius: 10px;
   border: 1px dashed #cfd8e4;
   background: rgba(244, 247, 251, 0.9);
 }
@@ -394,9 +390,9 @@ function toErrorMessage(error: unknown, fallback: string) {
   gap: 18px;
   align-items: start;
   padding: 18px 20px;
-  border-radius: 22px;
+  border-radius: 10px;
   border: 1px solid #dbe4ee;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 247, 250, 0.96));
+  background: #ffffff;
 }
 
 .request-main {
