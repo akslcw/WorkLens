@@ -8,6 +8,7 @@ import {
 import { readStoredSession, resolveHomePath } from './auth/session'
 import type { RouteRole } from './auth/types'
 import EmployeeHomeView from './views/EmployeeHomeView.vue'
+import EmployeeAccessRecordsView from './views/EmployeeAccessRecordsView.vue'
 import LoginView from './views/LoginView.vue'
 import ManagerAccessRequestsView from './views/ManagerAccessRequestsView.vue'
 import ManagerHomeView from './views/ManagerHomeView.vue'
@@ -68,6 +69,15 @@ const routes: RouteRecordRaw[] = [
     path: '/employee',
     name: 'employee-home',
     component: EmployeeHomeView,
+    meta: {
+      requiresAuth: true,
+      role: 'EMPLOYEE',
+    },
+  },
+  {
+    path: '/employee/access-records',
+    name: 'employee-access-records',
+    component: EmployeeAccessRecordsView,
     meta: {
       requiresAuth: true,
       role: 'EMPLOYEE',

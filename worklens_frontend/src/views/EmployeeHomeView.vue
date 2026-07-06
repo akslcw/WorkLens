@@ -5,6 +5,7 @@ import { generateEmployeeReport, getEmployeeReportHistory } from '../api/employe
 import type { ReportHistoryItem } from '../api/teamReports'
 import { getUsageRecords, type UsageRecord } from '../api/usageRecords'
 import { clearSession, readStoredSession } from '../auth/session'
+import EmployeeWorkspaceNav from '../components/EmployeeWorkspaceNav.vue'
 
 const router = useRouter()
 const session = readStoredSession()
@@ -119,6 +120,9 @@ function toErrorMessage(error: unknown, fallback: string) {
         <p class="eyebrow">Employee Workspace</p>
         <h1>个人效率面板</h1>
         <p class="hero-copy">这里只展示当前登录员工自己的使用明细和自己的周报历史，不接受前端传参切换到别人的数据。</p>
+        <div class="hero-nav">
+          <EmployeeWorkspaceNav current="dashboard" />
+        </div>
       </div>
       <div class="hero-actions">
         <div class="session-pill">
@@ -276,6 +280,10 @@ function toErrorMessage(error: unknown, fallback: string) {
 .hero-copy {
   margin-top: 14px;
   max-width: 620px;
+}
+
+.hero-nav {
+  margin-top: 18px;
 }
 
 .hero-actions {

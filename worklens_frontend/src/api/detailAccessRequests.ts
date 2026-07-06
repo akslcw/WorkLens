@@ -12,6 +12,18 @@ export type DetailAccessRequest = {
   processedByEmployeeId: number | null
 }
 
+export type EmployeeDetailAccessRequest = {
+  id: number
+  requesterEmployeeId: number
+  requesterEmployeeName: string | null
+  reason: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'USED'
+  createdAt: string
+  processedAt: string | null
+  hasBeenViewed: boolean
+  viewedAt: string | null
+}
+
 export type CreateDetailAccessRequestPayload = {
   targetEmployeeId: number
   reason: string
@@ -34,4 +46,19 @@ export async function createDetailAccessRequest(payload: CreateDetailAccessReque
 
 export async function viewApprovedUsageRecords(requestId: number, token: string) {
   return request<UsageRecord[]>(`/detail-access-requests/${requestId}/usage-records`, { method: 'GET' }, token)
+}
+
+export async function listRequestsTargetingCurrentEmployee(token: string) {
+  return request<EmployeeDetailAccessRequest[]>('/detail-access-requests/targeting-me', { method: 'GET' }, token)
+}
+
+export async function decideDetailAccessRequest(requestId: number, decision: 'APPROVED' | 'REJECTED', token: string) {
+  return request<DetailAccessRequest>(
+    `/detail-access-requests/${requestId}/decision`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ decision }),
+    },
+    token,
+  )
 }

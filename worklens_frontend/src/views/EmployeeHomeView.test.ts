@@ -101,7 +101,10 @@ describe('EmployeeHomeView', () => {
 async function mountEmployeeHome() {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/employee', component: EmployeeHomeView }],
+    routes: [
+      { path: '/employee', component: EmployeeHomeView },
+      { path: '/employee/access-records', component: { template: '<div />' } },
+    ],
   })
 
   router.push('/employee')
