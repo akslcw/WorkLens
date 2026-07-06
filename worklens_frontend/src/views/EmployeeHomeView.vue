@@ -144,7 +144,6 @@ function toErrorMessage(error: unknown, fallback: string) {
               <p class="eyebrow">Usage Timeline</p>
               <h2>我的使用明细</h2>
             </div>
-            <span class="panel-badge">GET /usage-records</span>
           </div>
 
           <div v-if="usageRecords.length === 0" class="empty-state">
@@ -170,7 +169,6 @@ function toErrorMessage(error: unknown, fallback: string) {
               <p class="eyebrow">Weekly Report</p>
               <h2>我的周报</h2>
             </div>
-            <span class="panel-badge">POST /llm/employee-report</span>
           </div>
 
           <button
@@ -190,7 +188,6 @@ function toErrorMessage(error: unknown, fallback: string) {
 
           <div class="history-head">
             <p class="eyebrow">History</p>
-            <span class="panel-badge">GET /llm/employee-report-history</span>
           </div>
 
           <div v-if="reportHistory.length === 0" class="empty-state">
@@ -338,18 +335,6 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .panel-head h2 {
   font-size: 2rem;
-}
-
-.panel-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: #e8eff7;
-  color: #35506b;
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
 }
 
 .primary-button,

@@ -114,7 +114,7 @@ function toErrorMessage(error: unknown, fallback: string) {
       <div>
         <p class="eyebrow">Manager Workspace</p>
         <h1>员工档案管理</h1>
-        <p class="hero-copy">这里只对接现有 `/employees` 接口：看列表、新增员工、删除员工，不扩展到账号创建。</p>
+        <p class="hero-copy">这里只管理员工档案：看列表、新增员工、删除员工，不扩展到账号创建。</p>
         <div class="hero-nav">
           <ManagerWorkspaceNav current="directory" />
         </div>
@@ -135,7 +135,6 @@ function toErrorMessage(error: unknown, fallback: string) {
             <p class="eyebrow">Create Employee</p>
             <h2>新增员工档案</h2>
           </div>
-          <span class="panel-badge">POST /employees</span>
         </div>
 
         <form data-test="employee-form" class="employee-form" @submit.prevent="handleCreateEmployee">
@@ -175,7 +174,6 @@ function toErrorMessage(error: unknown, fallback: string) {
             <p class="eyebrow">Employee Directory</p>
             <h2>员工列表</h2>
           </div>
-          <span class="panel-badge">GET /employees</span>
         </div>
 
         <p v-if="errorMessage" class="feedback feedback--error" role="alert">{{ errorMessage }}</p>
@@ -323,18 +321,6 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .panel-head h2 {
   font-size: 2rem;
-}
-
-.panel-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: #e8eff7;
-  color: #35506b;
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
 }
 
 .employee-form {

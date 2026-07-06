@@ -167,7 +167,6 @@ function toErrorMessage(error: unknown, fallback: string) {
               <p class="eyebrow">Aggregate Split</p>
               <h2>应用使用占比</h2>
             </div>
-            <span class="panel-badge">GET /team-usage-summary</span>
           </div>
 
           <ul class="ratio-list">
@@ -192,7 +191,6 @@ function toErrorMessage(error: unknown, fallback: string) {
               <p class="eyebrow">LLM Summary</p>
               <h2>团队报告</h2>
             </div>
-            <span class="panel-badge">POST /llm/team-report</span>
           </div>
 
           <button
@@ -212,7 +210,6 @@ function toErrorMessage(error: unknown, fallback: string) {
 
           <div class="history-head">
             <p class="eyebrow">History</p>
-            <span class="panel-badge">GET /llm/team-report-history</span>
           </div>
 
           <div v-if="reportHistory.length === 0" class="empty-state">
@@ -389,18 +386,6 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .panel-head h2 {
   font-size: 2rem;
-}
-
-.panel-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: #e8eff7;
-  color: #35506b;
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
 }
 
 .primary-button,

@@ -197,7 +197,6 @@ function toErrorMessage(error: unknown, fallback: string) {
               <p class="eyebrow">Create Request</p>
               <h2>发起查看申请</h2>
             </div>
-            <span class="panel-badge">POST /detail-access-requests</span>
           </div>
 
           <form data-test="access-request-form" class="request-form" @submit.prevent="handleCreateRequest">
@@ -234,7 +233,6 @@ function toErrorMessage(error: unknown, fallback: string) {
               <p class="eyebrow">My Requests</p>
               <h2>我发起的申请</h2>
             </div>
-            <span class="panel-badge">GET /detail-access-requests</span>
           </div>
 
           <div v-if="requests.length === 0" class="empty-state">
@@ -288,7 +286,6 @@ function toErrorMessage(error: unknown, fallback: string) {
             <p class="eyebrow">Consumed Authorization</p>
             <h2>已读取的个人明细</h2>
           </div>
-          <span class="panel-badge">{{ `GET /detail-access-requests/${selectedRequestId}/usage-records` }}</span>
         </div>
 
         <ul class="records-list">
@@ -422,18 +419,6 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .panel-head h2 {
   font-size: 2rem;
-}
-
-.panel-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: #e8eff7;
-  color: #35506b;
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
 }
 
 .request-form {

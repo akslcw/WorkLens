@@ -156,7 +156,6 @@ function toErrorMessage(error: unknown, fallback: string) {
           <p class="eyebrow">Requests Targeting Me</p>
           <h2>指向我的申请</h2>
         </div>
-        <span class="panel-badge">GET /detail-access-requests/targeting-me</span>
       </div>
 
       <div v-if="requests.length === 0" class="empty-state">
@@ -313,18 +312,6 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .panel-head h2 {
   font-size: 2rem;
-}
-
-.panel-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 12px;
-  border-radius: 999px;
-  background: #e8eff7;
-  color: #35506b;
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
 }
 
 .ghost-button,
