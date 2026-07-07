@@ -96,6 +96,47 @@ describe('EmployeeHomeView', () => {
       '你本周下午的长时段专注表现更稳定。',
     )
   })
+
+  it('shows personal usage records in pages of twenty with load more', async () => {
+    const records = Array.from({ length: 25 }, (_, index) => ({
+      id: index + 1,
+      appName: `App ${index + 1}`,
+      startedAt: `2026-07-05T09:${String(index).padStart(2, '0')}:00`,
+      endedAt: `2026-07-05T09:${String(index + 1).padStart(2, '0')}:00`,
+      createdAt: `2026-07-05T09:${String(index + 1).padStart(2, '0')}:01`,
+    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        const method = init?.method ?? 'GET'
+
+        if (url.endsWith('/api/usage-records') && method === 'GET') {
+          return jsonResponse(records)
+        }
+
+        if (url.endsWith('/api/llm/employee-report-history') && method === 'GET') {
+          return jsonResponse([])
+        }
+
+        return new Response(null, { status: 404 })
+      }),
+    )
+
+    const wrapper = await mountEmployeeHome()
+    await flushPromises()
+
+    expect(wrapper.findAll('.record-row')).toHaveLength(20)
+    expect(wrapper.text()).toContain('App 20')
+    expect(wrapper.text()).not.toContain('App 21')
+
+    await wrapper.get('[data-test="load-more-usage-records"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.record-row')).toHaveLength(25)
+    expect(wrapper.text()).toContain('App 25')
+    expect(wrapper.find('[data-test="load-more-usage-records"]').exists()).toBe(false)
+  })
 })
 
 async function mountEmployeeHome() {

@@ -50,6 +50,7 @@ describe('App routing', () => {
     stubManagerLoginFetch({
       token: 'manager-token',
       username: 'manager',
+      displayName: 'Manager User',
       role: 'MANAGER',
     })
 
@@ -61,6 +62,7 @@ describe('App routing', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.fullPath).toBe('/manager')
+    expect(wrapper.text()).toContain('Manager User')
     expect(wrapper.text()).toContain('员工档案管理')
     expect(wrapper.text()).toContain('No employees yet')
     expect(JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) ?? '{}')).toMatchObject({
@@ -72,18 +74,20 @@ describe('App routing', () => {
   it('routes employee login to the employee home page', async () => {
     stubEmployeeLoginFetch({
       token: 'employee-token',
-      username: 'employee.alice',
+      username: 'C001',
+      displayName: 'Li',
       role: 'EMPLOYEE',
     })
 
     const { router, wrapper } = await mountAppAt('/login')
 
-    await wrapper.get('[data-test="username-input"]').setValue('employee.alice')
+    await wrapper.get('[data-test="username-input"]').setValue('C001')
     await wrapper.get('[data-test="password-input"]').setValue('Password123!')
     await wrapper.get('[data-test="login-form"]').trigger('submit')
     await flushPromises()
 
     expect(router.currentRoute.value.fullPath).toBe('/employee')
+    expect(wrapper.text()).toContain('Li')
     expect(wrapper.text()).toContain('个人效率面板')
     expect(wrapper.text()).toContain('暂无个人使用记录')
     expect(JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) ?? '{}')).toMatchObject({
@@ -160,7 +164,7 @@ async function mountAppAt(path: string) {
   return { router, wrapper }
 }
 
-function stubManagerLoginFetch(session: { token: string; username: string; role: RouteRole }) {
+function stubManagerLoginFetch(session: { token: string; username: string; displayName?: string; role: RouteRole }) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -205,7 +209,7 @@ function stubStoredManagerFetch() {
   )
 }
 
-function stubEmployeeLoginFetch(session: { token: string; username: string; role: RouteRole; mustChangePassword?: boolean }) {
+function stubEmployeeLoginFetch(session: { token: string; username: string; displayName?: string; role: RouteRole; mustChangePassword?: boolean }) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

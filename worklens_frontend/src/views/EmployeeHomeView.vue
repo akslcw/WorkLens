@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { generateEmployeeReport, getEmployeeReportHistory } from '../api/employeeReports'
 import type { ReportHistoryItem } from '../api/teamReports'
@@ -16,6 +16,10 @@ const currentReport = ref('')
 const loading = ref(false)
 const generating = ref(false)
 const errorMessage = ref('')
+const usagePageSize = 20
+const visibleUsageRecordCount = ref(usagePageSize)
+const visibleUsageRecords = computed(() => usageRecords.value.slice(0, visibleUsageRecordCount.value))
+const hasMoreUsageRecords = computed(() => visibleUsageRecordCount.value < usageRecords.value.length)
 
 onMounted(async () => {
   await loadEmployeeHome()
@@ -36,6 +40,7 @@ async function loadEmployeeHome() {
     ])
 
     usageRecords.value = records
+    visibleUsageRecordCount.value = usagePageSize
     reportHistory.value = history
   } catch (error) {
     errorMessage.value = toErrorMessage(error, '个人效率面板加载失败。')
@@ -75,6 +80,10 @@ async function handleGenerateEmployeeReport() {
 async function handleLogout() {
   clearSession()
   await router.replace('/login')
+}
+
+function handleLoadMoreUsageRecords() {
+  visibleUsageRecordCount.value += usagePageSize
 }
 
 function formatDateTime(value: string | null) {
@@ -127,7 +136,7 @@ function toErrorMessage(error: unknown, fallback: string) {
       <div class="hero-actions">
         <div class="session-pill">
           <span>Current User</span>
-          <strong>{{ session?.username ?? 'employee' }}</strong>
+          <strong>{{ session?.displayName ?? session?.username ?? 'employee' }}</strong>
         </div>
         <button class="ghost-button" type="button" @click="handleLogout">退出登录</button>
       </div>
@@ -152,7 +161,7 @@ function toErrorMessage(error: unknown, fallback: string) {
           </div>
 
           <ul v-else class="records-list">
-            <li v-for="record in usageRecords" :key="record.id" class="record-row">
+            <li v-for="record in visibleUsageRecords" :key="record.id" class="record-row">
               <div class="record-main">
                 <strong>{{ record.appName }}</strong>
                 <p>{{ formatDateTime(record.startedAt) }} - {{ formatDateTime(record.endedAt) }}</p>
@@ -161,6 +170,16 @@ function toErrorMessage(error: unknown, fallback: string) {
               <span class="duration-chip">{{ formatDuration(record) }}</span>
             </li>
           </ul>
+
+          <button
+            v-if="hasMoreUsageRecords"
+            data-test="load-more-usage-records"
+            class="secondary-button records-load-more"
+            type="button"
+            @click="handleLoadMoreUsageRecords"
+          >
+            Load more
+          </button>
         </article>
 
         <article class="panel-card">
@@ -333,7 +352,8 @@ function toErrorMessage(error: unknown, fallback: string) {
 }
 
 .primary-button,
-.ghost-button {
+.ghost-button,
+.secondary-button {
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -354,8 +374,15 @@ function toErrorMessage(error: unknown, fallback: string) {
   color: #1d2e47;
 }
 
+.secondary-button {
+  padding: 12px 16px;
+  background: #edf3f9;
+  color: #35506b;
+}
+
 .primary-button:hover,
-.ghost-button:hover {
+.ghost-button:hover,
+.secondary-button:hover {
   transform: translateY(-1px);
 }
 
@@ -426,6 +453,11 @@ function toErrorMessage(error: unknown, fallback: string) {
   color: #35506b;
   font-size: 0.8rem;
   letter-spacing: 0.06em;
+}
+
+.records-load-more {
+  width: 100%;
+  margin-top: 14px;
 }
 
 .report-card {

@@ -42,6 +42,7 @@ class SyncRuntime:
         self._logger(
             f"Startup retry complete: uploaded={startup_report.uploaded_count}, cached={startup_report.cached_count}"
         )
+        self._log_upload_failure(startup_report)
 
         started_at = time.time()
         next_upload_at = time.time() + self._config.upload_interval_seconds
@@ -84,3 +85,11 @@ class SyncRuntime:
             f"[{flush_at.isoformat(timespec='seconds')}] "
             f"flush complete: uploaded={report.uploaded_count}, cached={report.cached_count}"
         )
+        self._log_upload_failure(report)
+
+    def _log_upload_failure(self, report) -> None:
+        if report.failure_code == "PASSWORD_CHANGE_REQUIRED":
+            self._logger(
+                "Upload blocked: current account must change password in the web app before desktop uploads can continue. "
+                "Records remain cached locally and will retry after the password is changed."
+            )

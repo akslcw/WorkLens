@@ -97,6 +97,54 @@ class UsageRecordControllerIntegrationTests extends PostgresIntegrationTestSuppo
     }
 
     @Test
+    void adjacentUsageRecordForSameEmployeeAndAppExtendsLatestRecord() throws Exception {
+        long employeeId = insertUser("employee.alice", PASSWORD_HASH, "EMPLOYEE", "E001", "Alice");
+        String employeeToken = loginAndReadToken("employee.alice", PASSWORD);
+
+        mockMvc.perform(post("/usage-records")
+                        .header("Authorization", "Bearer " + employeeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "appName": "Chrome",
+                                  "startedAt": "2026-07-03T09:00:00",
+                                  "endedAt": "2026-07-03T09:05:00"
+                                }
+                                """))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/usage-records")
+                        .header("Authorization", "Bearer " + employeeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "appName": "Chrome",
+                                  "startedAt": "2026-07-03T09:05:05",
+                                  "endedAt": "2026-07-03T09:10:00"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.appName").value("Chrome"))
+                .andExpect(jsonPath("$.startedAt").value("2026-07-03T09:00:00"))
+                .andExpect(jsonPath("$.endedAt").value("2026-07-03T09:10:00"));
+
+        Integer recordCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM usage_records WHERE employee_id = ?",
+                Integer.class,
+                employeeId
+        );
+        Map<String, Object> persisted = jdbcTemplate.queryForMap(
+                "SELECT app_name, started_at, ended_at FROM usage_records WHERE employee_id = ?",
+                employeeId
+        );
+
+        assertThat(recordCount).isEqualTo(1);
+        assertThat(persisted.get("app_name")).isEqualTo("Chrome");
+        assertThat(((Timestamp) persisted.get("started_at")).toLocalDateTime()).isEqualTo(LocalDateTime.parse("2026-07-03T09:00:00"));
+        assertThat(((Timestamp) persisted.get("ended_at")).toLocalDateTime()).isEqualTo(LocalDateTime.parse("2026-07-03T09:10:00"));
+    }
+
+    @Test
     void createUsageRecordRejectsEndBeforeStart() throws Exception {
         insertUser("employee.alice", PASSWORD_HASH, "EMPLOYEE", "E001", "Alice");
         String employeeToken = loginAndReadToken("employee.alice", PASSWORD);

@@ -9,8 +9,10 @@ import com.su.worklens_backend.dto.LoginResponse;
 import com.su.worklens_backend.dto.PasswordChangeResponse;
 import com.su.worklens_backend.entity.AuthToken;
 import com.su.worklens_backend.entity.AuthUser;
+import com.su.worklens_backend.entity.Employee;
 import com.su.worklens_backend.mapper.AuthTokenMapper;
 import com.su.worklens_backend.mapper.AuthUserMapper;
+import com.su.worklens_backend.mapper.EmployeeMapper;
 import com.su.worklens_backend.service.AuthService;
 import com.su.worklens_backend.service.PasswordHasher;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,11 +31,13 @@ public class AuthServiceImpl implements AuthService {
 
     private final AuthUserMapper authUserMapper;
     private final AuthTokenMapper authTokenMapper;
+    private final EmployeeMapper employeeMapper;
     private final PasswordHasher passwordHasher;
 
-    public AuthServiceImpl(AuthUserMapper authUserMapper, AuthTokenMapper authTokenMapper, PasswordHasher passwordHasher) {
+    public AuthServiceImpl(AuthUserMapper authUserMapper, AuthTokenMapper authTokenMapper, EmployeeMapper employeeMapper, PasswordHasher passwordHasher) {
         this.authUserMapper = authUserMapper;
         this.authTokenMapper = authTokenMapper;
+        this.employeeMapper = employeeMapper;
         this.passwordHasher = passwordHasher;
     }
 
@@ -60,6 +64,7 @@ public class AuthServiceImpl implements AuthService {
         return new LoginResponse(
                 authToken.getToken(),
                 authUser.getUsername(),
+                resolveDisplayName(authUser),
                 authUser.getRole(),
                 Boolean.TRUE.equals(authUser.getMustChangePassword())
         );
@@ -117,6 +122,7 @@ public class AuthServiceImpl implements AuthService {
         return new CurrentUserResponse(
                 authenticatedUser.getEmployeeId(),
                 authenticatedUser.getUsername(),
+                resolveDisplayName(authenticatedUser.getEmployeeId(), authenticatedUser.getUsername()),
                 authenticatedUser.getRole(),
                 authenticatedUser.isMustChangePassword()
         );
@@ -137,5 +143,20 @@ public class AuthServiceImpl implements AuthService {
         authUser.setMustChangePassword(false);
         authUserMapper.updateById(authUser);
         return new PasswordChangeResponse(authUser.getUsername(), false);
+    }
+
+    private String resolveDisplayName(AuthUser authUser) {
+        return resolveDisplayName(authUser.getEmployeeId(), authUser.getUsername());
+    }
+
+    private String resolveDisplayName(Long employeeId, String fallbackUsername) {
+        if (employeeId == null) {
+            return fallbackUsername;
+        }
+        Employee employee = employeeMapper.selectById(employeeId);
+        if (employee == null || employee.getName() == null || employee.getName().isBlank()) {
+            return fallbackUsername;
+        }
+        return employee.getName();
     }
 }

@@ -28,6 +28,18 @@ class FakeApiClient:
         }
 
 
+class PasswordChangeRequiredApiClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, datetime, datetime]] = []
+
+    def create_usage_record(self, token: str, app_name: str, started_at: datetime, ended_at: datetime) -> dict:
+        self.calls.append((token, app_name, started_at, ended_at))
+        response = requests.Response()
+        response.status_code = 403
+        response._content = b'{"message":"Password change required"}'
+        raise requests.HTTPError("403 Client Error: Forbidden", response=response)
+
+
 class SyncServiceTests(unittest.TestCase):
 
     def test_failed_upload_caches_new_records(self) -> None:
@@ -112,6 +124,29 @@ class SyncServiceTests(unittest.TestCase):
             self.assertEqual(2, len(pending_records))
             self.assertEqual("Idle", pending_records[0].app_name)
             self.assertEqual("chrome.exe", pending_records[1].app_name)
+
+    def test_password_change_required_failure_is_reported_and_records_stay_cached(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = LocalRecordStore(str(Path(temp_dir) / "cache.sqlite3"))
+            api_client = PasswordChangeRequiredApiClient()
+            service = SyncService(api_client, store)
+            records = [
+                ActivityRecord(
+                    app_name="chrome.exe",
+                    started_at=datetime.fromisoformat("2026-07-04T14:00:00"),
+                    ended_at=datetime.fromisoformat("2026-07-04T14:05:00"),
+                )
+            ]
+
+            report = service.upload_batch("token-4", records)
+
+            self.assertEqual(0, report.uploaded_count)
+            self.assertEqual(1, report.cached_count)
+            self.assertEqual("PASSWORD_CHANGE_REQUIRED", report.failure_code)
+            self.assertIn("must change password", report.failure_message)
+            pending_records = store.list_pending_records()
+            self.assertEqual(1, len(pending_records))
+            self.assertEqual("chrome.exe", pending_records[0].app_name)
 
 
 if __name__ == "__main__":

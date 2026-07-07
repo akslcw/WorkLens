@@ -24,6 +24,8 @@ import java.util.stream.Collectors;
 @Service
 public class UsageRecordServiceImpl implements UsageRecordService {
 
+    private static final long ADJACENT_RECORD_TOLERANCE_SECONDS = 15;
+
     private final UsageRecordMapper usageRecordMapper;
 
     public UsageRecordServiceImpl(UsageRecordMapper usageRecordMapper) {
@@ -43,6 +45,20 @@ public class UsageRecordServiceImpl implements UsageRecordService {
 
     @Override
     public UsageRecordResponse createUsageRecord(UsageRecordRequest request, AuthenticatedUser authenticatedUser) {
+        UsageRecord latestRecord = usageRecordMapper.selectOne(
+                new LambdaQueryWrapper<UsageRecord>()
+                        .eq(UsageRecord::getEmployeeId, authenticatedUser.getEmployeeId())
+                        .orderByDesc(UsageRecord::getEndedAt, UsageRecord::getId)
+                        .last("LIMIT 1")
+        );
+        if (canMergeIntoLatestRecord(latestRecord, request)) {
+            if (request.getEndedAt().isAfter(latestRecord.getEndedAt())) {
+                latestRecord.setEndedAt(request.getEndedAt());
+                usageRecordMapper.updateById(latestRecord);
+            }
+            return toUsageRecordResponse(latestRecord);
+        }
+
         UsageRecord usageRecord = new UsageRecord();
         usageRecord.setEmployeeId(authenticatedUser.getEmployeeId());
         usageRecord.setAppName(request.getAppName().trim());
@@ -99,6 +115,17 @@ public class UsageRecordServiceImpl implements UsageRecordService {
 
     private long calculateUsageMinutes(UsageRecord usageRecord) {
         return Duration.between(usageRecord.getStartedAt(), usageRecord.getEndedAt()).toMinutes();
+    }
+
+    private boolean canMergeIntoLatestRecord(UsageRecord latestRecord, UsageRecordRequest request) {
+        if (latestRecord == null) {
+            return false;
+        }
+        if (!latestRecord.getAppName().equals(request.getAppName().trim())) {
+            return false;
+        }
+        long gapSeconds = Duration.between(latestRecord.getEndedAt(), request.getStartedAt()).getSeconds();
+        return gapSeconds >= 0 && gapSeconds <= ADJACENT_RECORD_TOLERANCE_SECONDS;
     }
 
     private UsageRecordResponse toUsageRecordResponse(UsageRecord usageRecord) {

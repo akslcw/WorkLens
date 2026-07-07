@@ -9,6 +9,7 @@ export type LoginPayload = {
 export type AuthSession = {
   token: string
   username: string
+  displayName?: string
   role: RouteRole
   mustChangePassword?: boolean
 }
@@ -16,6 +17,7 @@ export type AuthSession = {
 export type CurrentUser = {
   employeeId: number
   username: string
+  displayName?: string
   role: RouteRole
   mustChangePassword?: boolean
 }

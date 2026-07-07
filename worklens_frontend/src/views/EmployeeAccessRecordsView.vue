@@ -141,7 +141,7 @@ function toErrorMessage(error: unknown, fallback: string) {
       <div class="hero-actions">
         <div class="session-pill">
           <span>Current User</span>
-          <strong>{{ session?.username ?? 'employee' }}</strong>
+          <strong>{{ session?.displayName ?? session?.username ?? 'employee' }}</strong>
         </div>
         <button class="ghost-button" type="button" @click="handleLogout">退出登录</button>
       </div>

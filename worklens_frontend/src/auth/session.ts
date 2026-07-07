@@ -5,6 +5,7 @@ export const SESSION_STORAGE_KEY = 'worklens-session'
 export type AuthSession = {
   token: string
   username: string
+  displayName?: string
   role: RouteRole
   mustChangePassword?: boolean
 }

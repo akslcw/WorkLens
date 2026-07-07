@@ -71,6 +71,7 @@ class WorklensBackendApplicationTests extends PostgresIntegrationTestSupport {
                 .andExpect(jsonPath("$.token").isNotEmpty())
                 .andExpect(jsonPath("$.role").value("MANAGER"))
                 .andExpect(jsonPath("$.username").value("manager"))
+                .andExpect(jsonPath("$.displayName").value("Manager User"))
                 .andReturn();
 
         String token = readToken(loginResult);
@@ -80,6 +81,7 @@ class WorklensBackendApplicationTests extends PostgresIntegrationTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.employeeId").value(employeeId))
                 .andExpect(jsonPath("$.username").value("manager"))
+                .andExpect(jsonPath("$.displayName").value("Manager User"))
                 .andExpect(jsonPath("$.role").value("MANAGER"));
     }
 
@@ -98,6 +100,7 @@ class WorklensBackendApplicationTests extends PostgresIntegrationTestSupport {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.employeeId").value(employeeId))
                 .andExpect(jsonPath("$.username").value("employee.alice"))
+                .andExpect(jsonPath("$.displayName").value("Alice"))
                 .andExpect(jsonPath("$.role").value("EMPLOYEE"));
     }
 

@@ -154,6 +154,27 @@ python -m worklens_desktop_client.run_sync_client --base-url http://localhost:80
 pythonw -m worklens_desktop_client.tray_app
 ```
 
+## 桌面客户端使用顺序（重要）
+
+员工拿到初始账号后，必须先在网页端登录并完成首次修改密码，然后再启动桌面采集客户端。
+
+原因：新员工账号和被管理员重置密码后的账号都会处于 `mustChangePassword=true` 状态。这个状态下 `/auth/login` 可以成功，但后端会拒绝 `/usage-records` 等业务接口。桌面客户端会保留本地 SQLite 缓存，不会丢数据，但日志会提示：
+
+```text
+Upload blocked: current account must change password in the web app before desktop uploads can continue.
+```
+
+正确顺序：
+
+```text
+1. 管理员创建员工账号或重置密码
+2. 员工打开网页端，用工号和初始密码 worklens123 登录
+3. 员工按页面提示修改密码
+4. 员工再启动桌面采集客户端
+```
+
+如果顺序反过来，桌面客户端会持续采集并缓存数据，但在改密完成前无法成功上报。
+
 ## LLM 配置
 
 LLM 报告能力使用 DeepSeek API，API Key 不写入仓库，必须通过环境变量提供。
@@ -182,6 +203,11 @@ $env:WORKLENS_DEEPSEEK_READ_TIMEOUT='15s'
 - 空闲处理：空闲时间单独记为 `Idle`
 - 上报周期：每 `5` 分钟批量上报一次
 - 失败重试：失败写入本地 SQLite，恢复后自动补传
+- 上报阻塞提示：如果后端返回 `Password change required`，本地缓存保留，日志明确提示员工先到网页端完成改密
+
+使用记录展示与合并：
+- 后端写入 `/usage-records` 时，会检查该员工最近一条记录；如果应用名相同，且上一条结束时间与新记录开始时间间隔在 `15` 秒内，则更新上一条记录的结束时间，不再插入新行
+- 员工端个人明细页默认展示 `20` 条记录，点击 `Load more` 继续加载，避免列表无限增长
 
 后端 LLM 默认策略：
 - 员工报告时间范围：最近一周
