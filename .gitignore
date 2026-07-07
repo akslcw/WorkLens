@@ -29,3 +29,5 @@ worklens_frontend/.idea/
 worklens_frontend/.vscode/
 
 __pycache__/
+*.sqlite3
+worklens_desktop_client/cache.sqlite3
