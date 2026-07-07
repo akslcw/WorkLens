@@ -96,6 +96,50 @@ describe('ManagerHomeView', () => {
     expect(wrapper.get('[data-test="employee-list"]').text()).toContain('WL-003')
   })
 
+  it('resets an employee password from the action area below delete', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        const method = init?.method ?? 'GET'
+
+        if (url.endsWith('/api/employees') && method === 'GET') {
+          return jsonResponse([
+            {
+              id: 1,
+              name: 'Alice Chen',
+              employeeNo: 'E001',
+              createdAt: '2026-07-05T09:00:00',
+            },
+          ])
+        }
+
+        if (url.endsWith('/api/employees/1/reset-password') && method === 'POST') {
+          expect(init?.headers).toMatchObject({
+            Authorization: 'Bearer manager-token',
+          })
+          return jsonResponse({
+            username: 'E001',
+            initialPassword: 'worklens123',
+            mustChangePassword: true,
+          })
+        }
+
+        return new Response(null, { status: 404 })
+      }),
+    )
+
+    const wrapper = await mountManagerHome()
+    await flushPromises()
+
+    await wrapper.get('[data-test="reset-password-1"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('E001')
+    expect(wrapper.text()).toContain('worklens123')
+    expect(wrapper.text()).toContain('首次登录后必须修改密码')
+  })
+
   it('deletes an employee from the manager page', async () => {
     let employees = [
       {

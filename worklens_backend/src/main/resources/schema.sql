@@ -11,11 +11,15 @@ CREATE TABLE IF NOT EXISTS auth_users (
     password_hash VARCHAR(255) NOT NULL,
     role VARCHAR(20) NOT NULL,
     employee_id BIGINT REFERENCES employees(id),
+    must_change_password BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP NOT NULL
 );
 
 ALTER TABLE auth_users
     ADD COLUMN IF NOT EXISTS employee_id BIGINT;
+
+ALTER TABLE auth_users
+    ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
 
 UPDATE auth_users au
 SET employee_id = NULL

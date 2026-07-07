@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class EmployeeControllerIntegrationTests extends PostgresIntegrationTestSupport {
 
     private static final String PASSWORD = "Password123!";
+    private static final String INITIAL_EMPLOYEE_PASSWORD = "worklens123";
     private static final String PASSWORD_HASH = "pbkdf2_sha256$120000$d29ya2xlbnMtc2FsdC0wMQ==$y7dDc5YjVRKR+v1GlPwEumSMa6Wa4bMH0h23Tk8Tx64=";
 
     @Autowired
@@ -96,6 +97,72 @@ class EmployeeControllerIntegrationTests extends PostgresIntegrationTestSupport 
                 .andExpect(jsonPath("$.name").value("Alice"))
                 .andExpect(jsonPath("$.employeeNo").value("E001"))
                 .andExpect(jsonPath("$.createdAt").isNotEmpty());
+
+        Integer accountCount = jdbcTemplate.queryForObject(
+                """
+                        SELECT COUNT(*)
+                        FROM auth_users au
+                        JOIN employees e ON e.id = au.employee_id
+                        WHERE au.username = 'E001'
+                          AND au.role = 'EMPLOYEE'
+                          AND e.employee_no = 'E001'
+                          AND au.must_change_password = TRUE
+                        """,
+                Integer.class
+        );
+        assertThat(accountCount).isEqualTo(1);
+
+        login("E001", INITIAL_EMPLOYEE_PASSWORD)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("E001"))
+                .andExpect(jsonPath("$.role").value("EMPLOYEE"))
+                .andExpect(jsonPath("$.mustChangePassword").value(true));
+    }
+
+    @Test
+    void employeeWithInitialPasswordMustChangePasswordBeforeBusinessAccess() throws Exception {
+        String managerToken = insertManagerAndLogin();
+        createEmployee(managerToken, "Alice", "E001");
+        String employeeToken = loginAndReadToken("E001", INITIAL_EMPLOYEE_PASSWORD);
+
+        mockMvc.perform(get("/usage-records")
+                        .header("Authorization", "Bearer " + employeeToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/auth/change-password")
+                        .header("Authorization", "Bearer " + employeeToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword": "worklens123",
+                                  "newPassword": "Changed123!"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mustChangePassword").value(false));
+
+        login("E001", "Changed123!")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mustChangePassword").value(false));
+    }
+
+    @Test
+    void managerCanResetEmployeePasswordToSharedInitialPassword() throws Exception {
+        String managerToken = insertManagerAndLogin();
+        long employeeId = createEmployee(managerToken, "Alice", "E001");
+        String employeeToken = loginAndReadToken("E001", INITIAL_EMPLOYEE_PASSWORD);
+        changePassword(employeeToken, INITIAL_EMPLOYEE_PASSWORD, "Changed123!");
+
+        mockMvc.perform(post("/employees/{id}/reset-password", employeeId)
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("E001"))
+                .andExpect(jsonPath("$.initialPassword").value(INITIAL_EMPLOYEE_PASSWORD))
+                .andExpect(jsonPath("$.mustChangePassword").value(true));
+
+        login("E001", INITIAL_EMPLOYEE_PASSWORD)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mustChangePassword").value(true));
     }
 
     @Test
@@ -215,6 +282,19 @@ class EmployeeControllerIntegrationTests extends PostgresIntegrationTestSupport 
 
     private String loginAndReadToken(String username, String password) throws Exception {
         return readToken(login(username, password).andReturn());
+    }
+
+    private void changePassword(String token, String currentPassword, String newPassword) throws Exception {
+        mockMvc.perform(post("/auth/change-password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword": "%s",
+                                  "newPassword": "%s"
+                                }
+                                """.formatted(currentPassword, newPassword)))
+                .andExpect(status().isOk());
     }
 
     private long createEmployee(String token, String name, String employeeNo) throws Exception {

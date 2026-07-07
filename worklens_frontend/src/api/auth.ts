@@ -10,12 +10,24 @@ export type AuthSession = {
   token: string
   username: string
   role: RouteRole
+  mustChangePassword?: boolean
 }
 
 export type CurrentUser = {
   employeeId: number
   username: string
   role: RouteRole
+  mustChangePassword?: boolean
+}
+
+export type ChangePasswordPayload = {
+  currentPassword: string
+  newPassword: string
+}
+
+export type ChangePasswordResponse = {
+  username: string
+  mustChangePassword: boolean
 }
 
 export async function login(payload: LoginPayload) {
@@ -30,4 +42,15 @@ export async function login(payload: LoginPayload) {
 
 export async function getCurrentUser(token: string) {
   return request<CurrentUser>('/auth/me', { method: 'GET' }, token)
+}
+
+export async function changePassword(payload: ChangePasswordPayload, token: string) {
+  return request<ChangePasswordResponse>(
+    '/auth/change-password',
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+    token,
+  )
 }

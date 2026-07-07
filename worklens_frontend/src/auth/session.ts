@@ -6,6 +6,7 @@ export type AuthSession = {
   token: string
   username: string
   role: RouteRole
+  mustChangePassword?: boolean
 }
 
 export function readStoredSession() {
@@ -32,4 +33,8 @@ export function clearSession() {
 
 export function resolveHomePath(role: RouteRole) {
   return role === 'MANAGER' ? '/manager' : '/employee'
+}
+
+export function resolvePostLoginPath(session: AuthSession) {
+  return session.mustChangePassword ? '/change-password' : resolveHomePath(session.role)
 }

@@ -2,9 +2,11 @@ package com.su.worklens_backend.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.su.worklens_backend.auth.AuthenticatedUser;
+import com.su.worklens_backend.dto.ChangePasswordRequest;
 import com.su.worklens_backend.dto.CurrentUserResponse;
 import com.su.worklens_backend.dto.LoginRequest;
 import com.su.worklens_backend.dto.LoginResponse;
+import com.su.worklens_backend.dto.PasswordChangeResponse;
 import com.su.worklens_backend.entity.AuthToken;
 import com.su.worklens_backend.entity.AuthUser;
 import com.su.worklens_backend.mapper.AuthTokenMapper;
@@ -55,7 +57,12 @@ public class AuthServiceImpl implements AuthService {
         authToken.setExpiresAt(LocalDateTime.now().plusHours(TOKEN_TTL_HOURS));
         authTokenMapper.insert(authToken);
 
-        return new LoginResponse(authToken.getToken(), authUser.getUsername(), authUser.getRole());
+        return new LoginResponse(
+                authToken.getToken(),
+                authUser.getUsername(),
+                authUser.getRole(),
+                Boolean.TRUE.equals(authUser.getMustChangePassword())
+        );
     }
 
     @Override
@@ -85,7 +92,13 @@ public class AuthServiceImpl implements AuthService {
             return null;
         }
 
-        return new AuthenticatedUser(authUser.getId(), authUser.getEmployeeId(), authUser.getUsername(), authUser.getRole());
+        return new AuthenticatedUser(
+                authUser.getId(),
+                authUser.getEmployeeId(),
+                authUser.getUsername(),
+                authUser.getRole(),
+                Boolean.TRUE.equals(authUser.getMustChangePassword())
+        );
     }
 
     @Override
@@ -104,7 +117,25 @@ public class AuthServiceImpl implements AuthService {
         return new CurrentUserResponse(
                 authenticatedUser.getEmployeeId(),
                 authenticatedUser.getUsername(),
-                authenticatedUser.getRole()
+                authenticatedUser.getRole(),
+                authenticatedUser.isMustChangePassword()
         );
+    }
+
+    @Override
+    public PasswordChangeResponse changePassword(HttpServletRequest request, ChangePasswordRequest changePasswordRequest) {
+        AuthenticatedUser authenticatedUser = getAuthenticatedUser(request);
+        AuthUser authUser = authUserMapper.selectById(authenticatedUser.getAuthUserId());
+        if (authUser == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required");
+        }
+        if (!passwordHasher.matches(changePasswordRequest.getCurrentPassword(), authUser.getPasswordHash())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid current password");
+        }
+
+        authUser.setPasswordHash(passwordHasher.hash(changePasswordRequest.getNewPassword()));
+        authUser.setMustChangePassword(false);
+        authUserMapper.updateById(authUser);
+        return new PasswordChangeResponse(authUser.getUsername(), false);
     }
 }

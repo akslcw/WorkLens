@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { createEmployee, deleteEmployee, getEmployees, type Employee } from '../api/employees'
+import {
+  createEmployee,
+  deleteEmployee,
+  getEmployees,
+  resetEmployeePassword,
+  type Employee,
+  type ResetEmployeePasswordResponse,
+} from '../api/employees'
 import { clearSession, readStoredSession } from '../auth/session'
 import ManagerWorkspaceNav from '../components/ManagerWorkspaceNav.vue'
 
@@ -12,6 +19,8 @@ const employees = ref<Employee[]>([])
 const loading = ref(false)
 const submitting = ref(false)
 const deletingId = ref<number | null>(null)
+const resettingId = ref<number | null>(null)
+const resetResult = ref<ResetEmployeePasswordResponse | null>(null)
 const errorMessage = ref('')
 
 const form = reactive({
@@ -58,6 +67,11 @@ async function handleCreateEmployee() {
     )
 
     employees.value = [...employees.value, createdEmployee].sort((left, right) => left.id - right.id)
+    resetResult.value = {
+      username: createdEmployee.employeeNo,
+      initialPassword: 'worklens123',
+      mustChangePassword: true,
+    }
     form.name = ''
     form.employeeNo = ''
   } catch (error) {
@@ -82,6 +96,23 @@ async function handleDeleteEmployee(id: number) {
     errorMessage.value = toErrorMessage(error, '员工删除失败。')
   } finally {
     deletingId.value = null
+  }
+}
+
+async function handleResetPassword(id: number) {
+  if (!session?.token || resettingId.value !== null) {
+    return
+  }
+
+  resettingId.value = id
+  errorMessage.value = ''
+
+  try {
+    resetResult.value = await resetEmployeePassword(id, session.token)
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error, '密码重置失败。')
+  } finally {
+    resettingId.value = null
   }
 }
 
@@ -114,7 +145,7 @@ function toErrorMessage(error: unknown, fallback: string) {
       <div>
         <p class="eyebrow">Manager Workspace</p>
         <h1>员工档案管理</h1>
-        <p class="hero-copy">这里只管理员工档案：看列表、新增员工、删除员工，不扩展到账号创建。</p>
+        <p class="hero-copy">新增员工时会同步创建登录账号，账号名等于工号，初始密码为统一值。</p>
         <div class="hero-nav">
           <ManagerWorkspaceNav current="directory" />
         </div>
@@ -165,7 +196,7 @@ function toErrorMessage(error: unknown, fallback: string) {
           </button>
         </form>
 
-        <p class="panel-note">当前模块只创建员工档案，不会同步创建登录账号。</p>
+        <p class="panel-note">登录账号使用工号，初始密码为 worklens123。首次登录后必须修改密码。</p>
       </article>
 
       <article class="panel-card panel-card--list">
@@ -192,17 +223,32 @@ function toErrorMessage(error: unknown, fallback: string) {
               <small>创建时间：{{ formatDateTime(employee.createdAt) }}</small>
             </div>
 
-            <button
-              :data-test="`delete-employee-${employee.id}`"
-              class="danger-button"
-              type="button"
-              :disabled="deletingId === employee.id"
-              @click="handleDeleteEmployee(employee.id)"
-            >
-              {{ deletingId === employee.id ? '删除中...' : '删除' }}
-            </button>
+            <div class="employee-actions">
+              <button
+                :data-test="`delete-employee-${employee.id}`"
+                class="danger-button"
+                type="button"
+                :disabled="deletingId === employee.id"
+                @click="handleDeleteEmployee(employee.id)"
+              >
+                {{ deletingId === employee.id ? '删除中...' : '删除' }}
+              </button>
+              <button
+                :data-test="`reset-password-${employee.id}`"
+                class="secondary-button"
+                type="button"
+                :disabled="resettingId === employee.id"
+                @click="handleResetPassword(employee.id)"
+              >
+                {{ resettingId === employee.id ? '重置中...' : '重置密码' }}
+              </button>
+            </div>
           </li>
         </ul>
+
+        <p v-if="resetResult" class="feedback" role="status">
+          账号 {{ resetResult.username }} 的初始密码为 {{ resetResult.initialPassword }}，首次登录后必须修改密码。
+        </p>
       </article>
     </section>
   </main>
@@ -351,6 +397,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .primary-button,
 .ghost-button,
+.secondary-button,
 .danger-button {
   border: none;
   border-radius: 8px;
@@ -378,13 +425,21 @@ function toErrorMessage(error: unknown, fallback: string) {
   color: #b64131;
 }
 
+.secondary-button {
+  padding: 11px 16px;
+  background: #edf3f9;
+  color: #35506b;
+}
+
 .primary-button:hover,
 .ghost-button:hover,
+.secondary-button:hover,
 .danger-button:hover {
   transform: translateY(-1px);
 }
 
 .primary-button:disabled,
+.secondary-button:disabled,
 .danger-button:disabled {
   opacity: 0.65;
   cursor: not-allowed;
@@ -438,6 +493,12 @@ function toErrorMessage(error: unknown, fallback: string) {
   background: #ffffff;
 }
 
+.employee-actions {
+  display: grid;
+  gap: 8px;
+  min-width: 116px;
+}
+
 .employee-meta {
   display: grid;
   gap: 8px;
@@ -482,6 +543,7 @@ function toErrorMessage(error: unknown, fallback: string) {
   }
 
   .ghost-button,
+  .secondary-button,
   .danger-button {
     width: 100%;
   }

@@ -5,14 +5,20 @@ public class CurrentUserResponse {
     private Long employeeId;
     private String username;
     private String role;
+    private boolean mustChangePassword;
 
     public CurrentUserResponse() {
     }
 
     public CurrentUserResponse(Long employeeId, String username, String role) {
+        this(employeeId, username, role, false);
+    }
+
+    public CurrentUserResponse(Long employeeId, String username, String role, boolean mustChangePassword) {
         this.employeeId = employeeId;
         this.username = username;
         this.role = role;
+        this.mustChangePassword = mustChangePassword;
     }
 
     public Long getEmployeeId() {
@@ -37,5 +43,13 @@ public class CurrentUserResponse {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
     }
 }

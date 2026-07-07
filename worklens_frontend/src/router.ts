@@ -7,6 +7,7 @@ import {
 } from 'vue-router'
 import { readStoredSession, resolveHomePath } from './auth/session'
 import type { RouteRole } from './auth/types'
+import ChangePasswordView from './views/ChangePasswordView.vue'
 import EmployeeHomeView from './views/EmployeeHomeView.vue'
 import EmployeeAccessRecordsView from './views/EmployeeAccessRecordsView.vue'
 import LoginView from './views/LoginView.vue'
@@ -36,6 +37,14 @@ const routes: RouteRecordRaw[] = [
     component: LoginView,
     meta: {
       guestOnly: true,
+    },
+  },
+  {
+    path: '/change-password',
+    name: 'change-password',
+    component: ChangePasswordView,
+    meta: {
+      requiresAuth: true,
     },
   },
   {
@@ -104,6 +113,14 @@ function guardRoute(to: RouteLocationNormalized) {
   }
 
   if (to.meta.guestOnly && session) {
+    return resolveHomePath(session.role)
+  }
+
+  if (session?.mustChangePassword && to.path !== '/change-password') {
+    return '/change-password'
+  }
+
+  if (!session?.mustChangePassword && to.path === '/change-password' && session) {
     return resolveHomePath(session.role)
   }
 

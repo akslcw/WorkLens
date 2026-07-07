@@ -92,6 +92,25 @@ describe('App routing', () => {
     })
   })
 
+  it('routes users who must change password to the change password page first', async () => {
+    stubEmployeeLoginFetch({
+      token: 'employee-token',
+      username: 'E001',
+      role: 'EMPLOYEE',
+      mustChangePassword: true,
+    })
+
+    const { router, wrapper } = await mountAppAt('/login')
+
+    await wrapper.get('[data-test="username-input"]').setValue('E001')
+    await wrapper.get('[data-test="password-input"]').setValue('worklens123')
+    await wrapper.get('[data-test="login-form"]').trigger('submit')
+    await flushPromises()
+
+    expect(router.currentRoute.value.fullPath).toBe('/change-password')
+    expect(wrapper.text()).toContain('修改初始密码')
+  })
+
   it('restores an existing manager session and allows protected routes', async () => {
     localStorage.setItem(
       SESSION_STORAGE_KEY,
@@ -186,7 +205,7 @@ function stubStoredManagerFetch() {
   )
 }
 
-function stubEmployeeLoginFetch(session: { token: string; username: string; role: RouteRole }) {
+function stubEmployeeLoginFetch(session: { token: string; username: string; role: RouteRole; mustChangePassword?: boolean }) {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

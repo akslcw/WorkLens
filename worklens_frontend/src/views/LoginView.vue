@@ -2,7 +2,7 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { login } from '../api/auth'
-import { persistSession, resolveHomePath } from '../auth/session'
+import { persistSession, resolvePostLoginPath } from '../auth/session'
 
 const router = useRouter()
 
@@ -30,7 +30,7 @@ async function handleLogin() {
 
     persistSession(session)
     credentials.password = ''
-    await router.replace(resolveHomePath(session.role))
+    await router.replace(resolvePostLoginPath(session))
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '登录失败，请稍后重试。'
   } finally {

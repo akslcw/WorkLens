@@ -1,6 +1,7 @@
 package com.su.worklens_backend.controller;
 
 import com.su.worklens_backend.dto.EmployeeRequest;
+import com.su.worklens_backend.dto.ResetEmployeePasswordResponse;
 import com.su.worklens_backend.entity.Employee;
 import com.su.worklens_backend.service.EmployeeService;
 import jakarta.validation.Valid;
@@ -53,5 +54,10 @@ public class EmployeeController {
     public ResponseEntity<Void> deleteEmployee(@PathVariable("id") Long id) {
         employeeService.deleteEmployee(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/reset-password")
+    public ResetEmployeePasswordResponse resetEmployeePassword(@PathVariable("id") Long id) {
+        return employeeService.resetEmployeePassword(id);
     }
 }

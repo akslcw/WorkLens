@@ -5,14 +5,20 @@ public class LoginResponse {
     private String token;
     private String username;
     private String role;
+    private boolean mustChangePassword;
 
     public LoginResponse() {
     }
 
     public LoginResponse(String token, String username, String role) {
+        this(token, username, role, false);
+    }
+
+    public LoginResponse(String token, String username, String role, boolean mustChangePassword) {
         this.token = token;
         this.username = username;
         this.role = role;
+        this.mustChangePassword = mustChangePassword;
     }
 
     public String getToken() {
@@ -37,5 +43,13 @@ public class LoginResponse {
 
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public boolean isMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
     }
 }

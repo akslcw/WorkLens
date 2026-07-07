@@ -1,8 +1,10 @@
 package com.su.worklens_backend.controller;
 
 import com.su.worklens_backend.dto.CurrentUserResponse;
+import com.su.worklens_backend.dto.ChangePasswordRequest;
 import com.su.worklens_backend.dto.LoginRequest;
 import com.su.worklens_backend.dto.LoginResponse;
+import com.su.worklens_backend.dto.PasswordChangeResponse;
 import com.su.worklens_backend.service.AuthService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -30,5 +32,13 @@ public class AuthController {
     @GetMapping("/me")
     public CurrentUserResponse currentUser(HttpServletRequest request) {
         return authService.getCurrentUser(request);
+    }
+
+    @PostMapping("/change-password")
+    public PasswordChangeResponse changePassword(
+            HttpServletRequest request,
+            @Valid @RequestBody ChangePasswordRequest changePasswordRequest
+    ) {
+        return authService.changePassword(request, changePasswordRequest);
     }
 }

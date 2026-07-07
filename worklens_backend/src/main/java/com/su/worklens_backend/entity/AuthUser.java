@@ -23,6 +23,9 @@ public class AuthUser {
     @TableField("employee_id")
     private Long employeeId;
 
+    @TableField("must_change_password")
+    private Boolean mustChangePassword;
+
     @TableField("created_at")
     private LocalDateTime createdAt;
 
@@ -64,6 +67,14 @@ public class AuthUser {
 
     public void setEmployeeId(Long employeeId) {
         this.employeeId = employeeId;
+    }
+
+    public Boolean getMustChangePassword() {
+        return mustChangePassword;
+    }
+
+    public void setMustChangePassword(Boolean mustChangePassword) {
+        this.mustChangePassword = mustChangePassword;
     }
 
     public LocalDateTime getCreatedAt() {
