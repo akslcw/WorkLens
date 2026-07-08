@@ -15,6 +15,8 @@ public interface UsageRecordService {
 
     UsageViewResponse getUsageView(AuthenticatedUser authenticatedUser, LocalDate date, int page, int pageSize);
 
+    UsageViewResponse getUsageViewForEmployee(Long employeeId, LocalDate date, int page, int pageSize);
+
     UsageRecordResponse createUsageRecord(UsageRecordRequest request, AuthenticatedUser authenticatedUser);
 
     TeamUsageSummaryResponse getTeamUsageSummary();

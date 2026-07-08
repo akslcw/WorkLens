@@ -62,6 +62,11 @@ public class UsageRecordServiceImpl implements UsageRecordService {
 
     @Override
     public UsageViewResponse getUsageView(AuthenticatedUser authenticatedUser, LocalDate date, int page, int pageSize) {
+        return getUsageViewForEmployee(authenticatedUser.getEmployeeId(), date, page, pageSize);
+    }
+
+    @Override
+    public UsageViewResponse getUsageViewForEmployee(Long employeeId, LocalDate date, int page, int pageSize) {
         int normalizedPage = Math.max(1, page);
         int normalizedPageSize = Math.min(10, Math.max(1, pageSize));
         LocalDateTime dayStart = date.atStartOfDay();
@@ -69,7 +74,7 @@ public class UsageRecordServiceImpl implements UsageRecordService {
 
         List<UsageRecord> rawRecords = usageRecordMapper.selectList(
                 new LambdaQueryWrapper<UsageRecord>()
-                        .eq(UsageRecord::getEmployeeId, authenticatedUser.getEmployeeId())
+                        .eq(UsageRecord::getEmployeeId, employeeId)
                         .ge(UsageRecord::getStartedAt, dayStart)
                         .lt(UsageRecord::getStartedAt, nextDayStart)
                         .orderByAsc(UsageRecord::getStartedAt, UsageRecord::getId)
@@ -88,7 +93,7 @@ public class UsageRecordServiceImpl implements UsageRecordService {
             );
         }
 
-        Optional<UsageReportViewResponse> report = findCoveringReport(authenticatedUser.getEmployeeId(), date);
+        Optional<UsageReportViewResponse> report = findCoveringReport(employeeId, date);
         return UsageViewResponse.report(date, report.orElse(null));
     }
 

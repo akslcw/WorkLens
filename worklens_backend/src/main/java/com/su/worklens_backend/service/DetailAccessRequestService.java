@@ -7,7 +7,9 @@ import com.su.worklens_backend.dto.DetailAccessRequestDecisionRequest;
 import com.su.worklens_backend.dto.DetailAccessRequestResponse;
 import com.su.worklens_backend.dto.EmployeeDetailAccessRequestResponse;
 import com.su.worklens_backend.dto.UsageRecordResponse;
+import com.su.worklens_backend.dto.UsageViewResponse;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public interface DetailAccessRequestService {
@@ -21,6 +23,8 @@ public interface DetailAccessRequestService {
     List<EmployeeDetailAccessRequestResponse> listRequestsTargetingCurrentEmployee(AuthenticatedUser authenticatedUser);
 
     List<UsageRecordResponse> viewApprovedUsageRecords(Long requestId, AuthenticatedUser authenticatedUser);
+
+    UsageViewResponse viewApprovedUsageView(Long requestId, LocalDate date, int page, int pageSize, AuthenticatedUser authenticatedUser);
 
     List<DetailAccessAuditLogResponse> listAccessAuditLogs(Long requestId, AuthenticatedUser authenticatedUser);
 }

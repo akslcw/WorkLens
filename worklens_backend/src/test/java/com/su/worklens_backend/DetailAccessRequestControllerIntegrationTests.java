@@ -44,6 +44,8 @@ class DetailAccessRequestControllerIntegrationTests extends PostgresIntegrationT
 
     @BeforeEach
     void cleanDatabase() {
+        truncateIfExists("TRUNCATE TABLE llm_reports RESTART IDENTITY CASCADE");
+        truncateIfExists("TRUNCATE TABLE usage_records RESTART IDENTITY CASCADE");
         truncateIfExists("TRUNCATE TABLE detail_access_audit_logs RESTART IDENTITY CASCADE");
         truncateIfExists("TRUNCATE TABLE detail_access_requests RESTART IDENTITY CASCADE");
         truncateIfExists("TRUNCATE TABLE auth_tokens RESTART IDENTITY CASCADE");
@@ -234,6 +236,72 @@ class DetailAccessRequestControllerIntegrationTests extends PostgresIntegrationT
         assertThat(((Number) auditLogs.get(0).get("viewer_employee_id")).longValue()).isEqualTo(managerEmployeeId);
         assertThat(((Number) auditLogs.get(0).get("target_employee_id")).longValue()).isEqualTo(targetEmployeeId);
         assertThat(auditLogs.get(0).get("viewed_at")).isNotNull();
+    }
+
+    @Test
+    void requesterManagerCanViewApprovedUsageViewAsLiveCardsOnceAndAuditIt() throws Exception {
+        long managerEmployeeId = insertUser("manager", PASSWORD_HASH, "MANAGER", "M001", "Manager User");
+        long targetEmployeeId = insertUser("employee.bob", PASSWORD_HASH, "EMPLOYEE", "E002", "Bob");
+        long otherEmployeeId = insertUser("employee.alice", PASSWORD_HASH, "EMPLOYEE", "E003", "Alice");
+        insertUsageRecord(targetEmployeeId, "Chrome", "2026-07-08T09:00:00", "2026-07-08T10:00:00");
+        insertUsageRecord(targetEmployeeId, "Chrome", "2026-07-08T10:00:10", "2026-07-08T10:15:00");
+        insertUsageRecord(targetEmployeeId, "Slack", "2026-07-08T11:00:00", "2026-07-08T11:30:00");
+        insertUsageRecord(otherEmployeeId, "Teams", "2026-07-08T09:00:00", "2026-07-08T12:00:00");
+        long requestId = insertProcessedDetailAccessRequest(managerEmployeeId, targetEmployeeId, "Quarterly compliance review", "APPROVED", targetEmployeeId);
+        String managerToken = loginAndReadToken("manager", PASSWORD);
+
+        mockMvc.perform(get("/detail-access-requests/{id}/usage-view", requestId)
+                        .queryParam("date", "2026-07-08")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode").value("LIVE_USAGE"))
+                .andExpect(jsonPath("$.date").value("2026-07-08"))
+                .andExpect(jsonPath("$.totalApps").value(2))
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].appName").value("Chrome"))
+                .andExpect(jsonPath("$.items[0].durationSeconds").value(4500))
+                .andExpect(jsonPath("$.items[0].segments.length()").value(1))
+                .andExpect(jsonPath("$.items[1].appName").value("Slack"))
+                .andExpect(jsonPath("$.items[1].durationSeconds").value(1800))
+                .andExpect(jsonPath("$.items[0].employeeId").doesNotExist())
+                .andExpect(jsonPath("$.items[0].username").doesNotExist())
+                .andExpect(jsonPath("$.report").doesNotExist());
+
+        assertRequestUsedAndAudited(requestId, managerEmployeeId, targetEmployeeId);
+    }
+
+    @Test
+    void requesterManagerCanViewApprovedUsageViewAsRolledReportOnceAndAuditIt() throws Exception {
+        long managerEmployeeId = insertUser("manager", PASSWORD_HASH, "MANAGER", "M001", "Manager User");
+        long targetEmployeeId = insertUser("employee.bob", PASSWORD_HASH, "EMPLOYEE", "E002", "Bob");
+        insertEmployeeReport(targetEmployeeId, "EMPLOYEE", "WEEKLY", "2026-07-06", "2026-07-12", """
+                [
+                  {"appName":"Chrome","durationSeconds":5400,"durationMinutes":90,"ratio":0.75},
+                  {"appName":"Slack","durationSeconds":1800,"durationMinutes":30,"ratio":0.25}
+                ]
+                """, "Weekly usage summary");
+        long requestId = insertProcessedDetailAccessRequest(managerEmployeeId, targetEmployeeId, "Quarterly compliance review", "APPROVED", targetEmployeeId);
+        String managerToken = loginAndReadToken("manager", PASSWORD);
+
+        mockMvc.perform(get("/detail-access-requests/{id}/usage-view", requestId)
+                        .queryParam("date", "2026-07-08")
+                        .header("Authorization", "Bearer " + managerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode").value("REPORT"))
+                .andExpect(jsonPath("$.date").value("2026-07-08"))
+                .andExpect(jsonPath("$.items").doesNotExist())
+                .andExpect(jsonPath("$.report.reportScope").value("EMPLOYEE"))
+                .andExpect(jsonPath("$.report.periodType").value("WEEKLY"))
+                .andExpect(jsonPath("$.report.periodStartDate").value("2026-07-06"))
+                .andExpect(jsonPath("$.report.periodEndDate").value("2026-07-12"))
+                .andExpect(jsonPath("$.report.summary").value("Weekly usage summary"))
+                .andExpect(jsonPath("$.report.details.length()").value(2))
+                .andExpect(jsonPath("$.report.details[0].appName").value("Chrome"))
+                .andExpect(jsonPath("$.report.details[0].durationSeconds").value(5400))
+                .andExpect(jsonPath("$.report.targetEmployeeId").doesNotExist())
+                .andExpect(jsonPath("$.report.requesterEmployeeId").doesNotExist());
+
+        assertRequestUsedAndAudited(requestId, managerEmployeeId, targetEmployeeId);
     }
 
     @Test
@@ -509,6 +577,60 @@ class DetailAccessRequestControllerIntegrationTests extends PostgresIntegrationT
                 targetEmployeeId,
                 LocalDateTime.parse(viewedAt)
         );
+    }
+
+    private void insertEmployeeReport(
+            long employeeId,
+            String reportScope,
+            String periodType,
+            String periodStartDate,
+            String periodEndDate,
+            String detailJson,
+            String summary
+    ) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO llm_reports (
+                            report_type, requester_employee_id, target_employee_id, summary,
+                            period_started_at, period_ended_at, created_at, report_scope, period_type,
+                            period_start_date, period_end_date, detail_json, source_layer, source_count, generated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?::date, ?::date, CURRENT_TIMESTAMP,
+                                ?, ?, ?::date, ?::date, ?::jsonb, 'DAILY_REPORTS', 1, CURRENT_TIMESTAMP)
+                        """,
+                reportScope + "_" + periodType,
+                employeeId,
+                employeeId,
+                summary,
+                periodStartDate,
+                periodEndDate,
+                reportScope,
+                periodType,
+                periodStartDate,
+                periodEndDate,
+                detailJson
+        );
+    }
+
+    private void assertRequestUsedAndAudited(long requestId, long managerEmployeeId, long targetEmployeeId) {
+        Map<String, Object> requestState = jdbcTemplate.queryForMap(
+                "SELECT status FROM detail_access_requests WHERE id = ?",
+                requestId
+        );
+        assertThat(requestState.get("status")).isEqualTo("USED");
+
+        List<Map<String, Object>> auditLogs = jdbcTemplate.queryForList(
+                """
+                        SELECT detail_access_request_id, viewer_employee_id, target_employee_id, viewed_at
+                        FROM detail_access_audit_logs
+                        WHERE detail_access_request_id = ?
+                        """,
+                requestId
+        );
+        assertThat(auditLogs).hasSize(1);
+        assertThat(((Number) auditLogs.get(0).get("viewer_employee_id")).longValue()).isEqualTo(managerEmployeeId);
+        assertThat(((Number) auditLogs.get(0).get("target_employee_id")).longValue()).isEqualTo(targetEmployeeId);
+        assertThat(auditLogs.get(0).get("viewed_at")).isNotNull();
     }
 
     private ResultActions login(String username, String password) throws Exception {
