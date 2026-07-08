@@ -105,3 +105,35 @@ CREATE TABLE IF NOT EXISTS llm_reports (
     period_ended_at TIMESTAMP NULL,
     created_at TIMESTAMP NOT NULL
 );
+
+ALTER TABLE llm_reports
+    ADD COLUMN IF NOT EXISTS report_scope VARCHAR(20);
+
+ALTER TABLE llm_reports
+    ADD COLUMN IF NOT EXISTS period_type VARCHAR(20);
+
+ALTER TABLE llm_reports
+    ADD COLUMN IF NOT EXISTS period_start_date DATE;
+
+ALTER TABLE llm_reports
+    ADD COLUMN IF NOT EXISTS period_end_date DATE;
+
+ALTER TABLE llm_reports
+    ADD COLUMN IF NOT EXISTS detail_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+ALTER TABLE llm_reports
+    ADD COLUMN IF NOT EXISTS source_layer VARCHAR(30);
+
+ALTER TABLE llm_reports
+    ADD COLUMN IF NOT EXISTS source_count INTEGER;
+
+ALTER TABLE llm_reports
+    ADD COLUMN IF NOT EXISTS generated_at TIMESTAMP;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_reports_employee_period
+    ON llm_reports (report_scope, period_type, target_employee_id, period_start_date, period_end_date)
+    WHERE report_scope = 'EMPLOYEE';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_reports_team_period
+    ON llm_reports (report_scope, period_type, period_start_date, period_end_date)
+    WHERE report_scope = 'TEAM';
