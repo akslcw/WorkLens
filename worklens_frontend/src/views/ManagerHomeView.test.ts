@@ -121,6 +121,7 @@ describe('ManagerHomeView', () => {
           return jsonResponse({
             username: 'E001',
             initialPassword: 'worklens123',
+            employeeNewPassword: 'Changed123!',
             mustChangePassword: true,
           })
         }
@@ -137,6 +138,7 @@ describe('ManagerHomeView', () => {
 
     expect(wrapper.text()).toContain('E001')
     expect(wrapper.text()).toContain('worklens123')
+    expect(wrapper.text()).not.toContain('Changed123!')
     expect(wrapper.text()).toContain('首次登录后必须修改密码')
   })
 

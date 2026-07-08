@@ -14,6 +14,7 @@ const form = reactive({
 
 const submitting = ref(false)
 const errorMessage = ref('')
+const changedPassword = ref('')
 
 async function handleChangePassword() {
   if (!session?.token || submitting.value) {
@@ -22,6 +23,8 @@ async function handleChangePassword() {
 
   submitting.value = true
   errorMessage.value = ''
+  changedPassword.value = ''
+  const submittedNewPassword = form.newPassword
 
   try {
     const response = await changePassword(
@@ -37,12 +40,22 @@ async function handleChangePassword() {
       username: response.username,
       mustChangePassword: response.mustChangePassword,
     })
-    await router.replace(resolveHomePath(session.role))
+    changedPassword.value = submittedNewPassword
+    form.currentPassword = ''
+    form.newPassword = ''
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '密码修改失败，请稍后重试。'
   } finally {
     submitting.value = false
   }
+}
+
+async function handleContinue() {
+  if (!session) {
+    return
+  }
+  changedPassword.value = ''
+  await router.replace(resolveHomePath(session.role))
 }
 
 async function handleLogout() {
@@ -60,7 +73,16 @@ async function handleLogout() {
         当前账号使用统一初始密码或被管理员重置过密码。修改完成后，才能继续进入 WorkLens 的业务页面。
       </p>
 
-      <form data-test="change-password-form" class="password-form" @submit.prevent="handleChangePassword">
+      <div v-if="changedPassword" data-test="change-password-success" class="success-panel" role="status">
+        <strong>密码已修改</strong>
+        <p>你刚刚设置的新密码为：</p>
+        <code>{{ changedPassword }}</code>
+        <button data-test="continue-after-password-change" class="primary-button" type="button" @click="handleContinue">
+          进入 WorkLens
+        </button>
+      </div>
+
+      <form v-else data-test="change-password-form" class="password-form" @submit.prevent="handleChangePassword">
         <label class="field">
           <span>当前密码</span>
           <input
@@ -142,6 +164,35 @@ h1 {
   display: grid;
   gap: 16px;
   margin-top: 24px;
+}
+
+.success-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 18px;
+  border-radius: 10px;
+  border: 1px solid #cfe2d5;
+  background: #f3faf5;
+}
+
+.success-panel strong {
+  color: #1d2e47;
+}
+
+.success-panel p {
+  margin: 0;
+  color: #5d6e83;
+}
+
+.success-panel code {
+  display: block;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #1d2e47;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
 }
 
 .field {
