@@ -13,8 +13,6 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.BDDMockito.given;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -55,30 +53,19 @@ class ReportHistoryControllerIntegrationTests extends PostgresIntegrationTestSup
     }
 
     @Test
-    void employeeCanGenerateMultipleReportsAndListOwnHistory() throws Exception {
+    void employeeCanListOwnArchivedReportHistory() throws Exception {
         long aliceEmployeeId = insertUser("employee.alice", PASSWORD_HASH, "EMPLOYEE", "E001", "Alice");
         long bobEmployeeId = insertUser("employee.bob", PASSWORD_HASH, "EMPLOYEE", "E002", "Bob");
-        insertUsageRecord(aliceEmployeeId, "Slack", LocalDateTime.now().minusDays(2).withHour(9).withMinute(0).withSecond(0).withNano(0), LocalDateTime.now().minusDays(2).withHour(9).withMinute(30).withSecond(0).withNano(0));
-        insertUsageRecord(bobEmployeeId, "Teams", LocalDateTime.now().minusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0), LocalDateTime.now().minusDays(1).withHour(10).withMinute(30).withSecond(0).withNano(0));
-
         String aliceToken = loginAndReadToken("employee.alice", PASSWORD);
-        String bobToken = loginAndReadToken("employee.bob", PASSWORD);
-
-        given(llmProvider.generateText(anyString()))
-                .willReturn("First employee report", "Second employee report", "Bob employee report");
-
-        mockMvc.perform(post("/llm/employee-report")
-                        .header("Authorization", "Bearer " + aliceToken)
-                        .contentType(APPLICATION_JSON))
-                .andExpect(status().isOk());
-        mockMvc.perform(post("/llm/employee-report")
-                        .header("Authorization", "Bearer " + aliceToken)
-                        .contentType(APPLICATION_JSON))
-                .andExpect(status().isOk());
-        mockMvc.perform(post("/llm/employee-report")
-                        .header("Authorization", "Bearer " + bobToken)
-                        .contentType(APPLICATION_JSON))
-                .andExpect(status().isOk());
+        insertReport("EMPLOYEE_WEEKLY", aliceEmployeeId, aliceEmployeeId, "First employee report",
+                LocalDateTime.parse("2026-06-29T00:00:00"), LocalDateTime.parse("2026-07-05T23:59:59"),
+                LocalDateTime.parse("2026-07-06T00:10:00"));
+        insertReport("EMPLOYEE_WEEKLY", aliceEmployeeId, aliceEmployeeId, "Second employee report",
+                LocalDateTime.parse("2026-07-06T00:00:00"), LocalDateTime.parse("2026-07-12T23:59:59"),
+                LocalDateTime.parse("2026-07-13T00:10:00"));
+        insertReport("EMPLOYEE_WEEKLY", bobEmployeeId, bobEmployeeId, "Bob employee report",
+                LocalDateTime.parse("2026-07-06T00:00:00"), LocalDateTime.parse("2026-07-12T23:59:59"),
+                LocalDateTime.parse("2026-07-13T00:15:00"));
 
         mockMvc.perform(get("/llm/employee-report-history")
                         .header("Authorization", "Bearer " + aliceToken))
@@ -105,33 +92,16 @@ class ReportHistoryControllerIntegrationTests extends PostgresIntegrationTestSup
     }
 
     @Test
-    void managerCanGenerateMultipleTeamReportsAndListOwnHistory() throws Exception {
-        insertUser("manager.one", PASSWORD_HASH, "MANAGER", "M001", "Manager One");
-        insertUser("manager.two", PASSWORD_HASH, "MANAGER", "M002", "Manager Two");
-        long aliceEmployeeId = insertUser("employee.alice", PASSWORD_HASH, "EMPLOYEE", "E001", "Alice");
-        long bobEmployeeId = insertUser("employee.bob", PASSWORD_HASH, "EMPLOYEE", "E002", "Bob");
-        insertUsageRecord(aliceEmployeeId, "Slack", LocalDateTime.parse("2026-07-03T09:00:00"), LocalDateTime.parse("2026-07-03T09:30:00"));
-        insertUsageRecord(aliceEmployeeId, "Chrome", LocalDateTime.parse("2026-07-03T10:00:00"), LocalDateTime.parse("2026-07-03T11:00:00"));
-        insertUsageRecord(bobEmployeeId, "Slack", LocalDateTime.parse("2026-07-03T11:00:00"), LocalDateTime.parse("2026-07-03T11:45:00"));
-
+    void managerCanListOwnArchivedTeamReportHistory() throws Exception {
+        long managerOneId = insertUser("manager.one", PASSWORD_HASH, "MANAGER", "M001", "Manager One");
+        long managerTwoId = insertUser("manager.two", PASSWORD_HASH, "MANAGER", "M002", "Manager Two");
         String managerOneToken = loginAndReadToken("manager.one", PASSWORD);
-        String managerTwoToken = loginAndReadToken("manager.two", PASSWORD);
-
-        given(llmProvider.generateText(anyString()))
-                .willReturn("First team report", "Second team report", "Other manager team report");
-
-        mockMvc.perform(post("/llm/team-report")
-                        .header("Authorization", "Bearer " + managerOneToken)
-                        .contentType(APPLICATION_JSON))
-                .andExpect(status().isOk());
-        mockMvc.perform(post("/llm/team-report")
-                        .header("Authorization", "Bearer " + managerOneToken)
-                        .contentType(APPLICATION_JSON))
-                .andExpect(status().isOk());
-        mockMvc.perform(post("/llm/team-report")
-                        .header("Authorization", "Bearer " + managerTwoToken)
-                        .contentType(APPLICATION_JSON))
-                .andExpect(status().isOk());
+        insertReport("TEAM_SUMMARY", managerOneId, null, "First team report",
+                null, null, LocalDateTime.parse("2026-07-06T00:10:00"));
+        insertReport("TEAM_SUMMARY", managerOneId, null, "Second team report",
+                null, null, LocalDateTime.parse("2026-07-13T00:10:00"));
+        insertReport("TEAM_SUMMARY", managerTwoId, null, "Other manager team report",
+                null, null, LocalDateTime.parse("2026-07-13T00:15:00"));
 
         mockMvc.perform(get("/llm/team-report-history")
                         .header("Authorization", "Bearer " + managerOneToken))
@@ -179,16 +149,43 @@ class ReportHistoryControllerIntegrationTests extends PostgresIntegrationTestSup
         return employeeId;
     }
 
-    private void insertUsageRecord(long employeeId, String appName, LocalDateTime startedAt, LocalDateTime endedAt) {
+    private void insertReport(
+            String reportType,
+            Long requesterEmployeeId,
+            Long targetEmployeeId,
+            String summary,
+            LocalDateTime periodStartedAt,
+            LocalDateTime periodEndedAt,
+            LocalDateTime createdAt
+    ) {
         jdbcTemplate.update(
                 """
-                        INSERT INTO usage_records (employee_id, app_name, started_at, ended_at, created_at)
-                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        INSERT INTO llm_reports (
+                            report_type,
+                            requester_employee_id,
+                            target_employee_id,
+                            summary,
+                            period_started_at,
+                            period_ended_at,
+                            created_at,
+                            report_scope,
+                            period_type,
+                            period_start_date,
+                            period_end_date,
+                            detail_json,
+                            source_layer,
+                            source_count,
+                            generated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, null, null, null, null, '[]'::jsonb, null, null, null)
                         """,
-                employeeId,
-                appName,
-                startedAt,
-                endedAt
+                reportType,
+                requesterEmployeeId,
+                targetEmployeeId,
+                summary,
+                periodStartedAt,
+                periodEndedAt,
+                createdAt
         );
     }
 

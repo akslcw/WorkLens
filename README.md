@@ -284,9 +284,9 @@ $env:WORKLENS_DEEPSEEK_READ_TIMEOUT='15s'
 
 说明：
 - `GET /llm/test-response` 仅用于验证 DeepSeek 调用链路是否可用
-- `POST /llm/employee-report` 仅 `EMPLOYEE` 可调用，基于本人最近一周明细生成报告
+- `POST /llm/employee-report` 保留为兼容入口，认证和角色校验仍生效，但手动生成已禁用，已认证员工调用会返回 `410 Gone`
 - `GET /llm/employee-report-history` 仅 `EMPLOYEE` 可调用，只能看自己的报告历史
-- `POST /llm/team-report` 仅 `MANAGER` 可调用，输入只允许团队聚合数据
+- `POST /llm/team-report` 保留为兼容入口，认证和角色校验仍生效，但手动生成已禁用，已认证管理者调用会返回 `410 Gone`
 - `GET /llm/team-report-history` 仅 `MANAGER` 可调用，只能看自己生成过的团队报告历史
 
 ### LLM 失败处理

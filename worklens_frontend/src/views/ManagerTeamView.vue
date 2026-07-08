@@ -4,16 +4,14 @@ import { useRouter } from 'vue-router'
 import ManagerWorkspaceNav from '../components/ManagerWorkspaceNav.vue'
 import { clearSession, readStoredSession } from '../auth/session'
 import { getTeamUsageSummary, type AppUsageRatio, type TeamUsageSummary } from '../api/teamUsage'
-import { generateTeamReport, getTeamReportHistory, type ReportHistoryItem } from '../api/teamReports'
+import { getTeamReportHistory, type ReportHistoryItem } from '../api/teamReports'
 
 const router = useRouter()
 const session = readStoredSession()
 
 const summary = ref<TeamUsageSummary | null>(null)
 const reportHistory = ref<ReportHistoryItem[]>([])
-const currentReport = ref<string>('')
 const loading = ref(false)
-const generating = ref(false)
 const errorMessage = ref('')
 
 const topApps = computed(() => summary.value?.appUsageRatios ?? [])
@@ -42,34 +40,6 @@ async function loadManagerTeamView() {
     errorMessage.value = toErrorMessage(error, '团队数据加载失败。')
   } finally {
     loading.value = false
-  }
-}
-
-async function handleGenerateTeamReport() {
-  if (!session?.token || generating.value) {
-    return
-  }
-
-  generating.value = true
-  errorMessage.value = ''
-
-  try {
-    const response = await generateTeamReport(session.token)
-    currentReport.value = response.summary
-    reportHistory.value = [
-      {
-        reportType: 'TEAM',
-        summary: response.summary,
-        periodStartedAt: null,
-        periodEndedAt: null,
-        createdAt: new Date().toISOString(),
-      },
-      ...reportHistory.value,
-    ]
-  } catch (error) {
-    errorMessage.value = toErrorMessage(error, '团队报告生成失败。')
-  } finally {
-    generating.value = false
   }
 }
 
@@ -193,28 +163,13 @@ function toErrorMessage(error: unknown, fallback: string) {
             </div>
           </div>
 
-          <button
-            data-test="generate-team-report"
-            class="primary-button"
-            type="button"
-            :disabled="generating"
-            @click="handleGenerateTeamReport"
-          >
-            {{ generating ? '生成中...' : '生成团队报告' }}
-          </button>
-
-          <div v-if="currentReport" data-test="current-team-report" class="report-card report-card--current">
-            <p class="eyebrow">Current Report</p>
-            <p>{{ currentReport }}</p>
-          </div>
-
           <div class="history-head">
             <p class="eyebrow">History</p>
           </div>
 
           <div v-if="reportHistory.length === 0" class="empty-state">
             <strong>暂无历史团队报告</strong>
-            <p>点击上方按钮后，后端生成的团队报告会出现在这里。</p>
+            <p>报告会在系统定时归档任务完成后自动出现在这里。</p>
           </div>
 
           <ul v-else class="history-list">

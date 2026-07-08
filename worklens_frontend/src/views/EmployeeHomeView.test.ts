@@ -188,46 +188,37 @@ describe('EmployeeHomeView', () => {
     expect(wrapper.find('[data-test="usage-app-card"]').exists()).toBe(false)
   })
 
-  it('generates a new weekly report on demand', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input)
-        const method = init?.method ?? 'GET'
+  it('does not expose manual employee report generation', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
 
-        if (url.endsWith('/api/usage-records/view?date=2026-07-08&page=1&pageSize=10') && method === 'GET') {
-          return jsonResponse({
-            mode: 'LIVE_USAGE',
-            date: '2026-07-08',
-            page: 1,
-            pageSize: 10,
-            totalApps: 0,
-            items: [],
-          })
-        }
+      if (url.endsWith('/api/usage-records/view?date=2026-07-08&page=1&pageSize=10') && method === 'GET') {
+        return jsonResponse({
+          mode: 'LIVE_USAGE',
+          date: '2026-07-08',
+          page: 1,
+          pageSize: 10,
+          totalApps: 0,
+          items: [],
+        })
+      }
 
-        if (url.endsWith('/api/llm/employee-report-history') && method === 'GET') {
-          return jsonResponse([])
-        }
+      if (url.endsWith('/api/llm/employee-report-history') && method === 'GET') {
+        return jsonResponse([])
+      }
 
-        if (url.endsWith('/api/llm/employee-report') && method === 'POST') {
-          return jsonResponse({
-            summary: 'Your afternoon focus blocks were steady this week.',
-          })
-        }
-
-        return new Response(null, { status: 404 })
-      }),
-    )
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     const wrapper = await mountEmployeeHome()
     await flushPromises()
 
-    await wrapper.get('[data-test="generate-employee-report"]').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.get('[data-test="current-employee-report"]').text()).toContain(
-      'Your afternoon focus blocks were steady this week.',
+    expect(wrapper.find('[data-test="generate-employee-report"]').exists()).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('/api/llm/employee-report'),
+      expect.objectContaining({ method: 'POST' }),
     )
   })
 })

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { generateEmployeeReport, getEmployeeReportHistory } from '../api/employeeReports'
+import { getEmployeeReportHistory } from '../api/employeeReports'
 import type { ReportHistoryItem } from '../api/teamReports'
 import { getUsageView, type UsageAppCard, type UsageView } from '../api/usageRecords'
 import { clearSession, readStoredSession } from '../auth/session'
@@ -12,10 +12,8 @@ const session = readStoredSession()
 
 const usageView = ref<UsageView | null>(null)
 const reportHistory = ref<ReportHistoryItem[]>([])
-const currentReport = ref('')
 const loading = ref(false)
 const usageLoading = ref(false)
-const generating = ref(false)
 const errorMessage = ref('')
 const usageDate = ref(todayDateString())
 const usagePage = ref(1)
@@ -93,34 +91,6 @@ async function handleNextUsagePage() {
   }
   usagePage.value += 1
   await loadUsageView()
-}
-
-async function handleGenerateEmployeeReport() {
-  if (!session?.token || generating.value) {
-    return
-  }
-
-  generating.value = true
-  errorMessage.value = ''
-
-  try {
-    const response = await generateEmployeeReport(session.token)
-    currentReport.value = response.summary
-    reportHistory.value = [
-      {
-        reportType: 'EMPLOYEE',
-        summary: response.summary,
-        periodStartedAt: null,
-        periodEndedAt: null,
-        createdAt: new Date().toISOString(),
-      },
-      ...reportHistory.value,
-    ]
-  } catch (error) {
-    errorMessage.value = toErrorMessage(error, '个人周报生成失败。')
-  } finally {
-    generating.value = false
-  }
 }
 
 async function handleLogout() {
@@ -327,28 +297,13 @@ function toErrorMessage(error: unknown, fallback: string) {
             </div>
           </div>
 
-          <button
-            data-test="generate-employee-report"
-            class="primary-button"
-            type="button"
-            :disabled="generating"
-            @click="handleGenerateEmployeeReport"
-          >
-            {{ generating ? '生成中...' : '生成我的周报' }}
-          </button>
-
-          <div v-if="currentReport" data-test="current-employee-report" class="report-card report-card--current">
-            <p class="eyebrow">Current Report</p>
-            <p>{{ currentReport }}</p>
-          </div>
-
           <div class="history-head">
             <p class="eyebrow">History</p>
           </div>
 
           <div v-if="reportHistory.length === 0" class="empty-state">
             <strong>暂无周报历史</strong>
-            <p>点击上方按钮后，最近一周的个人周报会出现在这里。</p>
+            <p>报告会在系统定时归档任务完成后自动出现在这里。</p>
           </div>
 
           <ul v-else class="history-list">

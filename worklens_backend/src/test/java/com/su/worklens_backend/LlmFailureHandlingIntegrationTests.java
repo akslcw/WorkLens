@@ -69,9 +69,8 @@ class LlmFailureHandlingIntegrationTests extends PostgresIntegrationTestSupport 
         given(llmProvider.generateText(anyString()))
                 .willThrow(new LlmProviderException("DeepSeek API request failed"));
 
-        mockMvc.perform(post("/llm/team-report")
-                        .header("Authorization", "Bearer " + managerToken)
-                        .contentType(APPLICATION_JSON))
+        mockMvc.perform(get("/llm/test-response")
+                        .header("Authorization", "Bearer " + managerToken))
                 .andExpect(status().isBadGateway())
                 .andExpect(jsonPath("$.code").value("LLM_PROVIDER_ERROR"))
                 .andExpect(jsonPath("$.message").value("DeepSeek API request failed"));

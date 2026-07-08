@@ -3,7 +3,6 @@ package com.su.worklens_backend;
 import com.su.worklens_backend.service.LlmProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -11,11 +10,8 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDateTime;
-
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -64,36 +60,23 @@ class EmployeeReportControllerIntegrationTests extends PostgresIntegrationTestSu
     }
 
     @Test
-    void employeeCanGenerateEncouragingWeeklyReportUsingOnlyOwnRecentRecords() throws Exception {
+    void employeeManualReportGenerationIsGoneAndDoesNotCreateReport() throws Exception {
         long aliceEmployeeId = insertUser("employee.alice", PASSWORD_HASH, "EMPLOYEE", "E001", "Alice");
-        long bobEmployeeId = insertUser("employee.bob", PASSWORD_HASH, "EMPLOYEE", "E002", "Bob");
-        LocalDateTime now = LocalDateTime.now();
-        insertUsageRecord(aliceEmployeeId, "Slack", now.minusDays(2).withHour(9).withMinute(0).withSecond(0).withNano(0), now.minusDays(2).withHour(9).withMinute(30).withSecond(0).withNano(0));
-        insertUsageRecord(aliceEmployeeId, "Chrome", now.minusDays(1).withHour(10).withMinute(0).withSecond(0).withNano(0), now.minusDays(1).withHour(11).withMinute(15).withSecond(0).withNano(0));
-        insertUsageRecord(aliceEmployeeId, "LegacyApp", now.minusDays(8).withHour(8).withMinute(0).withSecond(0).withNano(0), now.minusDays(8).withHour(8).withMinute(45).withSecond(0).withNano(0));
-        insertUsageRecord(bobEmployeeId, "Teams", now.minusDays(1).withHour(14).withMinute(0).withSecond(0).withNano(0), now.minusDays(1).withHour(14).withMinute(30).withSecond(0).withNano(0));
-
         String aliceToken = loginAndReadToken("employee.alice", PASSWORD);
-        given(llmProvider.generateText(org.mockito.ArgumentMatchers.anyString()))
-                .willReturn("You kept a solid rhythm this week and built long focus blocks in Chrome.");
 
         mockMvc.perform(post("/llm/employee-report")
                         .header("Authorization", "Bearer " + aliceToken)
                         .contentType(APPLICATION_JSON))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.summary").value("You kept a solid rhythm this week and built long focus blocks in Chrome."));
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.code").value("MANUAL_REPORT_GENERATION_DISABLED"));
 
-        ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(llmProvider).generateText(promptCaptor.capture());
-        String prompt = promptCaptor.getValue();
-        assertThat(prompt).contains("encouraging");
-        assertThat(prompt).contains("Write the report in Chinese");
-        assertThat(prompt).contains("plain text only");
-        assertThat(prompt).contains("Do not use Markdown");
-        assertThat(prompt).contains("Slack");
-        assertThat(prompt).contains("Chrome");
-        assertThat(prompt).doesNotContain("LegacyApp");
-        assertThat(prompt).doesNotContain("Teams");
+        Integer reportCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM llm_reports WHERE target_employee_id = ?",
+                Integer.class,
+                aliceEmployeeId
+        );
+        assertThat(reportCount).isZero();
+        verifyNoInteractions(llmProvider);
     }
 
     private long insertUser(String username, String passwordHash, String role, String employeeNo, String name) {
@@ -135,19 +118,6 @@ class EmployeeReportControllerIntegrationTests extends PostgresIntegrationTestSu
         int valueStart = tokenStart + 9;
         int valueEnd = responseBody.indexOf("\"", valueStart);
         return responseBody.substring(valueStart, valueEnd);
-    }
-
-    private void insertUsageRecord(long employeeId, String appName, LocalDateTime startedAt, LocalDateTime endedAt) {
-        jdbcTemplate.update(
-                """
-                        INSERT INTO usage_records (employee_id, app_name, started_at, ended_at, created_at)
-                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                        """,
-                employeeId,
-                appName,
-                startedAt,
-                endedAt
-        );
     }
 
     private void truncateIfExists(String sql) {

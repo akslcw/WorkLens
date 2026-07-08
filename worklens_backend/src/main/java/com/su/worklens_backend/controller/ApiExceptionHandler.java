@@ -3,6 +3,7 @@ package com.su.worklens_backend.controller;
 import com.su.worklens_backend.dto.ApiErrorResponse;
 import com.su.worklens_backend.exception.LlmProviderException;
 import com.su.worklens_backend.exception.LlmProviderTimeoutException;
+import com.su.worklens_backend.exception.ManualReportGenerationDisabledException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -21,5 +22,11 @@ public class ApiExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_GATEWAY)
     public ApiErrorResponse handleLlmProviderFailure(LlmProviderException exception) {
         return new ApiErrorResponse("LLM_PROVIDER_ERROR", exception.getMessage());
+    }
+
+    @ExceptionHandler(ManualReportGenerationDisabledException.class)
+    @ResponseStatus(HttpStatus.GONE)
+    public ApiErrorResponse handleManualReportGenerationDisabled(ManualReportGenerationDisabledException exception) {
+        return new ApiErrorResponse("MANUAL_REPORT_GENERATION_DISABLED", exception.getMessage());
     }
 }

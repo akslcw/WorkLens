@@ -62,47 +62,35 @@ describe('ManagerTeamView', () => {
     expect(wrapper.text()).toContain('过去一周团队沟通工具占比偏高。')
   })
 
-  it('generates a new team report on demand', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input)
-        const method = init?.method ?? 'GET'
+  it('does not expose manual team report generation', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      const method = init?.method ?? 'GET'
 
-        if (url.endsWith('/api/team-usage-summary') && method === 'GET') {
-          return jsonResponse({
-            teamAverageUsageMinutes: 90,
-            totalUsageMinutes: 360,
-            activeEmployeeCount: 4,
-            appUsageRatios: [],
-          })
-        }
+      if (url.endsWith('/api/team-usage-summary') && method === 'GET') {
+        return jsonResponse({
+          teamAverageUsageMinutes: 90,
+          totalUsageMinutes: 360,
+          activeEmployeeCount: 4,
+          appUsageRatios: [],
+        })
+      }
 
-        if (url.endsWith('/api/llm/team-report-history') && method === 'GET') {
-          return jsonResponse([])
-        }
+      if (url.endsWith('/api/llm/team-report-history') && method === 'GET') {
+        return jsonResponse([])
+      }
 
-        if (url.endsWith('/api/llm/team-report') && method === 'POST') {
-          expect(init?.headers).toMatchObject({
-            Authorization: 'Bearer manager-token',
-          })
-          return jsonResponse({
-            summary: '团队整体使用节奏稳定，但协作工具时长仍偏高。',
-          })
-        }
-
-        return new Response(null, { status: 404 })
-      }),
-    )
+      return new Response(null, { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     const wrapper = await mountManagerTeam()
     await flushPromises()
 
-    await wrapper.get('[data-test="generate-team-report"]').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.get('[data-test="current-team-report"]').text()).toContain(
-      '团队整体使用节奏稳定，但协作工具时长仍偏高。',
+    expect(wrapper.find('[data-test="generate-team-report"]').exists()).toBe(false)
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringContaining('/api/llm/team-report'),
+      expect.objectContaining({ method: 'POST' }),
     )
   })
 })
