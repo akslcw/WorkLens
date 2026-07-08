@@ -223,8 +223,15 @@ function stubEmployeeLoginFetch(session: { token: string; username: string; disp
         })
       }
 
-      if (url.endsWith('/api/usage-records') && method === 'GET') {
-        return new Response(JSON.stringify([]), {
+      if (url.includes('/api/usage-records/view?') && method === 'GET') {
+        return new Response(JSON.stringify({
+          mode: 'LIVE_USAGE',
+          date: '2026-07-08',
+          page: 1,
+          pageSize: 10,
+          totalApps: 0,
+          items: [],
+        }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         })

@@ -3,23 +3,32 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { generateEmployeeReport, getEmployeeReportHistory } from '../api/employeeReports'
 import type { ReportHistoryItem } from '../api/teamReports'
-import { getUsageRecords, type UsageRecord } from '../api/usageRecords'
+import { getUsageView, type UsageAppCard, type UsageView } from '../api/usageRecords'
 import { clearSession, readStoredSession } from '../auth/session'
 import EmployeeWorkspaceNav from '../components/EmployeeWorkspaceNav.vue'
 
 const router = useRouter()
 const session = readStoredSession()
 
-const usageRecords = ref<UsageRecord[]>([])
+const usageView = ref<UsageView | null>(null)
 const reportHistory = ref<ReportHistoryItem[]>([])
 const currentReport = ref('')
 const loading = ref(false)
+const usageLoading = ref(false)
 const generating = ref(false)
 const errorMessage = ref('')
-const usagePageSize = 20
-const visibleUsageRecordCount = ref(usagePageSize)
-const visibleUsageRecords = computed(() => usageRecords.value.slice(0, visibleUsageRecordCount.value))
-const hasMoreUsageRecords = computed(() => visibleUsageRecordCount.value < usageRecords.value.length)
+const usageDate = ref(todayDateString())
+const usagePage = ref(1)
+const usagePageSize = 10
+
+const usageCards = computed(() => usageView.value?.items ?? [])
+const usageReport = computed(() => usageView.value?.report ?? null)
+const totalUsageApps = computed(() => usageView.value?.totalApps ?? usageCards.value.length)
+const totalUsagePages = computed(() => Math.max(1, Math.ceil(totalUsageApps.value / usagePageSize)))
+const canGoToPreviousUsagePage = computed(() => usagePage.value > 1)
+const canGoToNextUsagePage = computed(() => usagePage.value < totalUsagePages.value)
+const isLiveUsageMode = computed(() => usageView.value?.mode === 'LIVE_USAGE')
+const isReportMode = computed(() => usageView.value?.mode === 'REPORT')
 
 onMounted(async () => {
   await loadEmployeeHome()
@@ -34,19 +43,56 @@ async function loadEmployeeHome() {
   errorMessage.value = ''
 
   try {
-    const [records, history] = await Promise.all([
-      getUsageRecords(session.token),
+    const [view, history] = await Promise.all([
+      getUsageView(session.token, usageDate.value, usagePage.value, usagePageSize),
       getEmployeeReportHistory(session.token),
     ])
 
-    usageRecords.value = records
-    visibleUsageRecordCount.value = usagePageSize
+    usageView.value = view
     reportHistory.value = history
   } catch (error) {
     errorMessage.value = toErrorMessage(error, '个人效率面板加载失败。')
   } finally {
     loading.value = false
   }
+}
+
+async function loadUsageView() {
+  if (!session?.token) {
+    return
+  }
+
+  usageLoading.value = true
+  errorMessage.value = ''
+
+  try {
+    usageView.value = await getUsageView(session.token, usageDate.value, usagePage.value, usagePageSize)
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error, '使用明细加载失败。')
+  } finally {
+    usageLoading.value = false
+  }
+}
+
+async function handleUsageDateChange() {
+  usagePage.value = 1
+  await loadUsageView()
+}
+
+async function handlePreviousUsagePage() {
+  if (!canGoToPreviousUsagePage.value) {
+    return
+  }
+  usagePage.value -= 1
+  await loadUsageView()
+}
+
+async function handleNextUsagePage() {
+  if (!canGoToNextUsagePage.value) {
+    return
+  }
+  usagePage.value += 1
+  await loadUsageView()
 }
 
 async function handleGenerateEmployeeReport() {
@@ -82,8 +128,12 @@ async function handleLogout() {
   await router.replace('/login')
 }
 
-function handleLoadMoreUsageRecords() {
-  visibleUsageRecordCount.value += usagePageSize
+function todayDateString() {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function formatDateTime(value: string | null) {
@@ -100,10 +150,25 @@ function formatDateTime(value: string | null) {
   return `${year}/${month}/${day} ${hour}:${minute}`
 }
 
-function formatDuration(record: UsageRecord) {
-  const startedAt = new Date(record.startedAt).getTime()
-  const endedAt = new Date(record.endedAt).getTime()
-  return `${Math.round((endedAt - startedAt) / 60000)} min`
+function formatDateOnly(value: string) {
+  const [year, month, day] = value.split('-')
+  return `${year}/${month}/${day}`
+}
+
+function formatTimeOnly(value: string) {
+  const date = new Date(value)
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `${hour}:${minute}`
+}
+
+function formatDurationSeconds(seconds: number) {
+  return `${Math.round(seconds / 60)} min`
+}
+
+function formatPercent(ratio: number) {
+  const percent = Math.round(ratio * 1000) / 10
+  return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(1)}%`
 }
 
 function reportPeriodLabel(report: ReportHistoryItem) {
@@ -112,6 +177,17 @@ function reportPeriodLabel(report: ReportHistoryItem) {
   }
 
   return `${formatDateTime(report.periodStartedAt)} - ${formatDateTime(report.periodEndedAt)}`
+}
+
+function usageReportPeriodLabel() {
+  if (!usageReport.value) {
+    return ''
+  }
+  return `${formatDateOnly(usageReport.value.periodStartDate)} - ${formatDateOnly(usageReport.value.periodEndDate)}`
+}
+
+function appCardKey(card: UsageAppCard, index: number) {
+  return `${card.appName}-${index}`
 }
 
 function toErrorMessage(error: unknown, fallback: string) {
@@ -128,7 +204,7 @@ function toErrorMessage(error: unknown, fallback: string) {
       <div>
         <p class="eyebrow">Employee Workspace</p>
         <h1>个人效率面板</h1>
-        <p class="hero-copy">这里只展示当前登录员工自己的使用明细和自己的周报历史，不接受前端传参切换到别人的数据。</p>
+        <p class="hero-copy">这里只展示当前登录员工自己的使用明细和自己的报告历史，不接受前端传参切换到别人的数据。</p>
         <div class="hero-nav">
           <EmployeeWorkspaceNav current="dashboard" />
         </div>
@@ -143,43 +219,104 @@ function toErrorMessage(error: unknown, fallback: string) {
     </section>
 
     <p v-if="errorMessage" class="feedback feedback--error" role="alert">{{ errorMessage }}</p>
-    <p v-else-if="loading" class="feedback">正在加载你的个人明细与周报历史...</p>
+    <p v-else-if="loading" class="feedback">正在加载你的个人明细与报告历史...</p>
 
     <template v-else>
       <section class="content-grid">
         <article class="panel-card">
-          <div class="panel-head">
+          <div class="panel-head panel-head--with-controls">
             <div>
-              <p class="eyebrow">Usage Timeline</p>
+              <p class="eyebrow">Usage View</p>
               <h2>我的使用明细</h2>
             </div>
+            <label class="date-control">
+              <span>日期</span>
+              <input v-model="usageDate" type="date" @change="handleUsageDateChange" />
+            </label>
           </div>
 
-          <div v-if="usageRecords.length === 0" class="empty-state">
-            <strong>暂无个人使用记录</strong>
-            <p>等待桌面采集客户端上报后，这里会显示你自己的应用使用明细。</p>
+          <p v-if="usageLoading" class="inline-status">正在刷新使用明细...</p>
+
+          <template v-else-if="isLiveUsageMode">
+            <div v-if="usageCards.length === 0" class="empty-state">
+              <strong>暂无个人使用记录</strong>
+              <p>等待桌面采集客户端上报后，这里会按应用显示当天累计时长。</p>
+            </div>
+
+            <ul v-else class="usage-card-list">
+              <li
+                v-for="(card, index) in usageCards"
+                :key="appCardKey(card, index)"
+                data-test="usage-app-card"
+                class="usage-app-card"
+              >
+                <details open>
+                  <summary>
+                    <span>
+                      <strong>{{ card.appName }}</strong>
+                      <small>{{ card.segments.length }} 个时间段</small>
+                    </span>
+                    <span class="duration-chip">{{ formatDurationSeconds(card.durationSeconds) }}</span>
+                  </summary>
+                  <ul class="segment-list">
+                    <li v-for="segment in card.segments" :key="`${segment.startedAt}-${segment.endedAt}`">
+                      {{ formatTimeOnly(segment.startedAt) }} - {{ formatTimeOnly(segment.endedAt) }}
+                    </li>
+                  </ul>
+                </details>
+              </li>
+            </ul>
+
+            <div v-if="totalUsageApps > usagePageSize" class="pager">
+              <button
+                class="secondary-button"
+                type="button"
+                :disabled="!canGoToPreviousUsagePage || usageLoading"
+                @click="handlePreviousUsagePage"
+              >
+                上一页
+              </button>
+              <span>第 {{ usagePage }} / {{ totalUsagePages }} 页，共 {{ totalUsageApps }} 个应用</span>
+              <button
+                data-test="usage-next-page"
+                class="secondary-button"
+                type="button"
+                :disabled="!canGoToNextUsagePage || usageLoading"
+                @click="handleNextUsagePage"
+              >
+                下一页
+              </button>
+            </div>
+          </template>
+
+          <article v-else-if="isReportMode && usageReport" data-test="usage-report" class="usage-report">
+            <div class="report-meta">
+              <span>{{ usageReport.periodType }}</span>
+              <span>{{ usageReportPeriodLabel() }}</span>
+            </div>
+            <p class="report-summary">{{ usageReport.summary }}</p>
+            <table class="report-detail-table">
+              <thead>
+                <tr>
+                  <th>应用</th>
+                  <th>累计时长</th>
+                  <th>占比</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="detail in usageReport.details" :key="detail.appName">
+                  <td>{{ detail.appName }}</td>
+                  <td>{{ formatDurationSeconds(detail.durationSeconds) }}</td>
+                  <td>{{ formatPercent(detail.ratio) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </article>
+
+          <div v-else class="empty-state">
+            <strong>暂无可展示内容</strong>
+            <p>当前日期没有实时使用数据，也没有覆盖该日期的历史报告。</p>
           </div>
-
-          <ul v-else class="records-list">
-            <li v-for="record in visibleUsageRecords" :key="record.id" class="record-row">
-              <div class="record-main">
-                <strong>{{ record.appName }}</strong>
-                <p>{{ formatDateTime(record.startedAt) }} - {{ formatDateTime(record.endedAt) }}</p>
-                <small>写入时间：{{ formatDateTime(record.createdAt) }}</small>
-              </div>
-              <span class="duration-chip">{{ formatDuration(record) }}</span>
-            </li>
-          </ul>
-
-          <button
-            v-if="hasMoreUsageRecords"
-            data-test="load-more-usage-records"
-            class="secondary-button records-load-more"
-            type="button"
-            @click="handleLoadMoreUsageRecords"
-          >
-            Load more
-          </button>
         </article>
 
         <article class="panel-card">
@@ -264,7 +401,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 .hero-card h1,
 .panel-card h2,
 .session-pill strong,
-.record-main strong,
+.usage-app-card strong,
 .history-row strong,
 .empty-state strong {
   margin: 0;
@@ -278,11 +415,12 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .hero-copy,
 .feedback,
-.record-main p,
-.record-main small,
+.inline-status,
+.usage-app-card small,
 .report-card p,
 .history-row small,
-.empty-state p {
+.empty-state p,
+.report-summary {
   margin: 0;
   line-height: 1.7;
   color: #5d6e83;
@@ -342,6 +480,10 @@ function toErrorMessage(error: unknown, fallback: string) {
   margin-bottom: 20px;
 }
 
+.panel-head--with-controls {
+  align-items: center;
+}
+
 .history-head {
   margin-top: 22px;
   margin-bottom: 16px;
@@ -349,6 +491,23 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 .panel-head h2 {
   font-size: 1.35rem;
+}
+
+.date-control {
+  display: grid;
+  gap: 6px;
+  min-width: 160px;
+  color: #5d6e83;
+  font-size: 0.82rem;
+}
+
+.date-control input {
+  min-height: 38px;
+  border: 1px solid #d2dde8;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #1d2e47;
+  background: #ffffff;
 }
 
 .primary-button,
@@ -375,7 +534,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 }
 
 .secondary-button {
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: #edf3f9;
   color: #35506b;
 }
@@ -386,17 +545,23 @@ function toErrorMessage(error: unknown, fallback: string) {
   transform: translateY(-1px);
 }
 
-.primary-button:disabled {
-  opacity: 0.65;
+.primary-button:disabled,
+.secondary-button:disabled {
+  opacity: 0.55;
   cursor: not-allowed;
   transform: none;
 }
 
-.feedback {
+.feedback,
+.inline-status {
   margin-top: 18px;
   padding: 15px 16px;
   border-radius: 8px;
   background: #edf3f9;
+}
+
+.inline-status {
+  margin-top: 0;
 }
 
 .feedback--error {
@@ -413,7 +578,8 @@ function toErrorMessage(error: unknown, fallback: string) {
   background: rgba(244, 247, 251, 0.9);
 }
 
-.records-list,
+.usage-card-list,
+.segment-list,
 .history-list {
   display: grid;
   gap: 14px;
@@ -422,31 +588,43 @@ function toErrorMessage(error: unknown, fallback: string) {
   list-style: none;
 }
 
-.record-row,
+.usage-app-card,
 .history-row,
-.report-card {
+.report-card,
+.usage-report {
   border-radius: 10px;
   border: 1px solid #dbe4ee;
   background: #ffffff;
 }
 
-.record-row {
+.usage-app-card details {
+  padding: 0;
+}
+
+.usage-app-card summary {
   display: flex;
   justify-content: space-between;
   gap: 18px;
-  align-items: start;
+  align-items: center;
   padding: 18px 20px;
+  cursor: pointer;
+  list-style: none;
 }
 
-.record-main {
+.usage-app-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.usage-app-card summary > span:first-child {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .duration-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 74px;
   padding: 7px 12px;
   border-radius: 999px;
   background: #edf3f9;
@@ -455,9 +633,68 @@ function toErrorMessage(error: unknown, fallback: string) {
   letter-spacing: 0.06em;
 }
 
-.records-load-more {
+.segment-list {
+  gap: 8px;
+  padding: 0 20px 18px;
+}
+
+.segment-list li {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f6f9fc;
+  color: #5d6e83;
+  font-size: 0.9rem;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  color: #5d6e83;
+  font-size: 0.9rem;
+}
+
+.usage-report {
+  display: grid;
+  gap: 16px;
+  padding: 18px 20px;
+}
+
+.report-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.report-meta span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #edf3f9;
+  color: #35506b;
+  font-size: 0.8rem;
+}
+
+.report-detail-table {
   width: 100%;
-  margin-top: 14px;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.report-detail-table th,
+.report-detail-table td {
+  padding: 11px 10px;
+  border-bottom: 1px solid #e4ebf2;
+  text-align: left;
+  color: #35506b;
+}
+
+.report-detail-table th {
+  background: #f5f8fb;
+  color: #1d2e47;
+  font-size: 0.82rem;
 }
 
 .report-card {
@@ -473,7 +710,8 @@ function toErrorMessage(error: unknown, fallback: string) {
 }
 
 .report-card p,
-.history-row strong {
+.history-row strong,
+.report-summary {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -493,14 +731,15 @@ function toErrorMessage(error: unknown, fallback: string) {
 
   .hero-card,
   .content-grid,
-  .record-row {
+  .panel-head--with-controls,
+  .pager {
     grid-template-columns: 1fr;
   }
 
   .hero-card,
-  .record-row {
+  .pager {
     flex-direction: column;
-    align-items: start;
+    align-items: stretch;
   }
 
   .hero-actions {
@@ -508,7 +747,8 @@ function toErrorMessage(error: unknown, fallback: string) {
     justify-items: stretch;
   }
 
-  .ghost-button {
+  .ghost-button,
+  .date-control {
     width: 100%;
   }
 }
