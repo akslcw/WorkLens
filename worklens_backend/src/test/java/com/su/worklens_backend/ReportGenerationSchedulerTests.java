@@ -13,6 +13,7 @@ import java.time.ZoneId;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 class ReportGenerationSchedulerTests {
@@ -65,5 +66,44 @@ class ReportGenerationSchedulerTests {
         scheduler.generateWeeklyReports();
 
         verify(reportGenerationService).generateWeeklyReports(LocalDate.of(2026, 7, 12));
+    }
+
+    @Test
+    void monthlyReportGenerationUsesConfiguredCronAndHongKongTimezone() throws Exception {
+        Method method = ReportGenerationScheduler.class.getDeclaredMethod("generateMonthlyReports");
+
+        Scheduled scheduled = method.getAnnotation(Scheduled.class);
+
+        assertThat(scheduled).isNotNull();
+        assertThat(scheduled.cron()).isEqualTo("${worklens.reports.monthly-cron:0 55 23 * * *}");
+        assertThat(scheduled.zone()).isEqualTo("${worklens.reports.zone:Asia/Hong_Kong}");
+    }
+
+    @Test
+    void monthlyReportGenerationRunsOnMonthEndDateFromClock() {
+        ReportGenerationService reportGenerationService = mock(ReportGenerationService.class);
+        Clock clock = Clock.fixed(
+                Instant.parse("2026-07-31T15:55:00Z"),
+                ZoneId.of("Asia/Hong_Kong")
+        );
+        ReportGenerationScheduler scheduler = new ReportGenerationScheduler(reportGenerationService, clock);
+
+        scheduler.generateMonthlyReports();
+
+        verify(reportGenerationService).generateMonthlyReports(LocalDate.of(2026, 7, 31));
+    }
+
+    @Test
+    void monthlyReportGenerationSkipsNonMonthEndDate() {
+        ReportGenerationService reportGenerationService = mock(ReportGenerationService.class);
+        Clock clock = Clock.fixed(
+                Instant.parse("2026-07-30T15:55:00Z"),
+                ZoneId.of("Asia/Hong_Kong")
+        );
+        ReportGenerationScheduler scheduler = new ReportGenerationScheduler(reportGenerationService, clock);
+
+        scheduler.generateMonthlyReports();
+
+        verify(reportGenerationService, never()).generateMonthlyReports(LocalDate.of(2026, 7, 30));
     }
 }

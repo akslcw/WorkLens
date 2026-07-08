@@ -1,9 +1,11 @@
 package com.su.worklens_backend.service.impl;
 
 import com.su.worklens_backend.service.EmployeeDailyReportArchiveRequest;
+import com.su.worklens_backend.service.EmployeeMonthlyReportArchiveRequest;
 import com.su.worklens_backend.service.EmployeeWeeklyReportArchiveRequest;
 import com.su.worklens_backend.service.ReportArchiveService;
 import com.su.worklens_backend.service.TeamDailyReportArchiveRequest;
+import com.su.worklens_backend.service.TeamMonthlyReportArchiveRequest;
 import com.su.worklens_backend.service.TeamWeeklyReportArchiveRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -23,8 +25,10 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
     private static final String TEAM_SCOPE = "TEAM";
     private static final String DAILY_PERIOD = "DAILY";
     private static final String WEEKLY_PERIOD = "WEEKLY";
+    private static final String MONTHLY_PERIOD = "MONTHLY";
     private static final String RAW_USAGE_SOURCE = "RAW_USAGE";
     private static final String DAILY_REPORTS_SOURCE = "DAILY_REPORTS";
+    private static final String WEEKLY_REPORTS_SOURCE = "WEEKLY_REPORTS";
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -58,7 +62,22 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
             insertTeamWeeklyReport(teamReport);
             sourceReportIds.addAll(teamReport.sourceReportIds());
         }
-        deleteSourceReports(sourceReportIds);
+        deleteSourceReports(sourceReportIds, DAILY_PERIOD);
+    }
+
+    @Override
+    @Transactional
+    public void archiveMonthlyReports(List<EmployeeMonthlyReportArchiveRequest> employeeReports, TeamMonthlyReportArchiveRequest teamReport) {
+        List<Long> sourceReportIds = new ArrayList<>();
+        for (EmployeeMonthlyReportArchiveRequest report : employeeReports) {
+            insertEmployeeMonthlyReport(report);
+            sourceReportIds.addAll(report.sourceReportIds());
+        }
+        if (teamReport != null) {
+            insertTeamMonthlyReport(teamReport);
+            sourceReportIds.addAll(teamReport.sourceReportIds());
+        }
+        deleteSourceReports(sourceReportIds, WEEKLY_PERIOD);
     }
 
     @Override
@@ -255,6 +274,88 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
         );
     }
 
+    private void insertEmployeeMonthlyReport(EmployeeMonthlyReportArchiveRequest report) {
+        LocalDateTime now = LocalDateTime.now();
+        jdbcTemplate.update(
+                """
+                        INSERT INTO llm_reports (
+                            report_type,
+                            requester_employee_id,
+                            target_employee_id,
+                            summary,
+                            period_started_at,
+                            period_ended_at,
+                            created_at,
+                            report_scope,
+                            period_type,
+                            period_start_date,
+                            period_end_date,
+                            detail_json,
+                            source_layer,
+                            source_count,
+                            generated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
+                        """,
+                "EMPLOYEE_MONTHLY",
+                report.employeeId(),
+                report.employeeId(),
+                report.summary(),
+                Timestamp.valueOf(report.periodStartedAt()),
+                Timestamp.valueOf(report.periodEndedAt()),
+                Timestamp.valueOf(now),
+                EMPLOYEE_SCOPE,
+                MONTHLY_PERIOD,
+                report.periodStartDate(),
+                report.periodEndDate(),
+                report.detailJson(),
+                WEEKLY_REPORTS_SOURCE,
+                report.sourceCount(),
+                Timestamp.valueOf(now)
+        );
+    }
+
+    private void insertTeamMonthlyReport(TeamMonthlyReportArchiveRequest report) {
+        LocalDateTime now = LocalDateTime.now();
+        jdbcTemplate.update(
+                """
+                        INSERT INTO llm_reports (
+                            report_type,
+                            requester_employee_id,
+                            target_employee_id,
+                            summary,
+                            period_started_at,
+                            period_ended_at,
+                            created_at,
+                            report_scope,
+                            period_type,
+                            period_start_date,
+                            period_end_date,
+                            detail_json,
+                            source_layer,
+                            source_count,
+                            generated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
+                        """,
+                "TEAM_MONTHLY",
+                null,
+                null,
+                report.summary(),
+                Timestamp.valueOf(report.periodStartedAt()),
+                Timestamp.valueOf(report.periodEndedAt()),
+                Timestamp.valueOf(now),
+                TEAM_SCOPE,
+                MONTHLY_PERIOD,
+                report.periodStartDate(),
+                report.periodEndDate(),
+                report.detailJson(),
+                WEEKLY_REPORTS_SOURCE,
+                report.sourceCount(),
+                Timestamp.valueOf(now)
+        );
+    }
+
     private void deleteSourceRecords(List<Long> sourceRecordIds) {
         if (sourceRecordIds.isEmpty()) {
             return;
@@ -273,7 +374,7 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
         );
     }
 
-    private void deleteSourceReports(List<Long> sourceReportIds) {
+    private void deleteSourceReports(List<Long> sourceReportIds, String periodType) {
         if (sourceReportIds.isEmpty()) {
             return;
         }
@@ -286,8 +387,15 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
         }
 
         jdbcTemplate.update(
-                "DELETE FROM llm_reports WHERE period_type = 'DAILY' AND id IN (" + placeholders + ")",
-                parameters.toArray()
+                "DELETE FROM llm_reports WHERE period_type = ? AND id IN (" + placeholders + ")",
+                prepend(periodType, parameters).toArray()
         );
+    }
+
+    private List<Object> prepend(Object value, List<Object> parameters) {
+        List<Object> allParameters = new ArrayList<>();
+        allParameters.add(value);
+        allParameters.addAll(parameters);
+        return allParameters;
     }
 }

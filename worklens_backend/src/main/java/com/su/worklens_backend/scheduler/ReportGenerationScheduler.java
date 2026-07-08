@@ -27,4 +27,12 @@ public class ReportGenerationScheduler {
     public void generateWeeklyReports() {
         reportGenerationService.generateWeeklyReports(LocalDate.now(clock));
     }
+
+    @Scheduled(cron = "${worklens.reports.monthly-cron:0 55 23 * * *}", zone = "${worklens.reports.zone:Asia/Hong_Kong}")
+    public void generateMonthlyReports() {
+        LocalDate today = LocalDate.now(clock);
+        if (today.equals(today.withDayOfMonth(today.lengthOfMonth()))) {
+            reportGenerationService.generateMonthlyReports(today);
+        }
+    }
 }

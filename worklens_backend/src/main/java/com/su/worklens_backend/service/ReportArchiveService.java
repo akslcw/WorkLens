@@ -10,6 +10,8 @@ public interface ReportArchiveService {
 
     void archiveWeeklyReports(List<EmployeeWeeklyReportArchiveRequest> employeeReports, TeamWeeklyReportArchiveRequest teamReport);
 
+    void archiveMonthlyReports(List<EmployeeMonthlyReportArchiveRequest> employeeReports, TeamMonthlyReportArchiveRequest teamReport);
+
     void archiveEmployeeDailyReports(List<EmployeeDailyReportArchiveRequest> reports);
 
     void archiveEmployeeDailyReport(

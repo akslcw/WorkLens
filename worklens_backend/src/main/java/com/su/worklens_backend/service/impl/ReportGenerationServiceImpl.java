@@ -4,11 +4,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.su.worklens_backend.service.EmployeeDailyReportArchiveRequest;
+import com.su.worklens_backend.service.EmployeeMonthlyReportArchiveRequest;
 import com.su.worklens_backend.service.EmployeeWeeklyReportArchiveRequest;
 import com.su.worklens_backend.service.LlmProvider;
 import com.su.worklens_backend.service.ReportArchiveService;
 import com.su.worklens_backend.service.ReportGenerationService;
 import com.su.worklens_backend.service.TeamDailyReportArchiveRequest;
+import com.su.worklens_backend.service.TeamMonthlyReportArchiveRequest;
 import com.su.worklens_backend.service.TeamWeeklyReportArchiveRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -118,6 +120,30 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
 
         if (!employeeWeeklyReports.isEmpty() || teamWeeklyReport != null) {
             reportArchiveService.archiveWeeklyReports(employeeWeeklyReports, teamWeeklyReport);
+        }
+    }
+
+    @Override
+    public void generateMonthlyReports(LocalDate monthEndDate) {
+        LocalDate monthStartDate = monthEndDate.withDayOfMonth(1);
+        LocalDateTime periodStartedAt = monthStartDate.atStartOfDay();
+        LocalDateTime periodEndedAt = monthEndDate.plusDays(1).atStartOfDay();
+
+        List<EmployeeMonthlyReportArchiveRequest> employeeMonthlyReports = buildEmployeeMonthlyReports(
+                monthStartDate,
+                monthEndDate,
+                periodStartedAt,
+                periodEndedAt
+        );
+        TeamMonthlyReportArchiveRequest teamMonthlyReport = buildTeamMonthlyReport(
+                monthStartDate,
+                monthEndDate,
+                periodStartedAt,
+                periodEndedAt
+        );
+
+        if (!employeeMonthlyReports.isEmpty() || teamMonthlyReport != null) {
+            reportArchiveService.archiveMonthlyReports(employeeMonthlyReports, teamMonthlyReport);
         }
     }
 
@@ -298,7 +324,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         );
         List<EmployeeWeeklyReportArchiveRequest> requests = new ArrayList<>();
         for (Long employeeId : employeeIds) {
-            List<SourceReportSnapshot> sourceReports = findSourceReports("EMPLOYEE", employeeId, weekStartDate, weekEndDate);
+            List<SourceReportSnapshot> sourceReports = findSourceReports("EMPLOYEE", "DAILY", employeeId, weekStartDate, weekEndDate);
             if (sourceReports.isEmpty()) {
                 continue;
             }
@@ -326,7 +352,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
             LocalDateTime periodStartedAt,
             LocalDateTime periodEndedAt
     ) {
-        List<SourceReportSnapshot> sourceReports = findSourceReports("TEAM", null, weekStartDate, weekEndDate);
+        List<SourceReportSnapshot> sourceReports = findSourceReports("TEAM", "DAILY", null, weekStartDate, weekEndDate);
         if (sourceReports.isEmpty()) {
             return null;
         }
@@ -346,14 +372,84 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         );
     }
 
-    private List<SourceReportSnapshot> findSourceReports(String reportScope, Long employeeId, LocalDate startDate, LocalDate endDate) {
+    private List<EmployeeMonthlyReportArchiveRequest> buildEmployeeMonthlyReports(
+            LocalDate monthStartDate,
+            LocalDate monthEndDate,
+            LocalDateTime periodStartedAt,
+            LocalDateTime periodEndedAt
+    ) {
+        List<Long> employeeIds = jdbcTemplate.queryForList(
+                """
+                        SELECT DISTINCT target_employee_id
+                        FROM llm_reports
+                        WHERE report_scope = 'EMPLOYEE'
+                          AND period_type = 'WEEKLY'
+                          AND period_start_date >= ?
+                          AND period_end_date <= ?
+                        ORDER BY target_employee_id
+                        """,
+                Long.class,
+                monthStartDate,
+                monthEndDate
+        );
+        List<EmployeeMonthlyReportArchiveRequest> requests = new ArrayList<>();
+        for (Long employeeId : employeeIds) {
+            List<SourceReportSnapshot> sourceReports = findSourceReports("EMPLOYEE", "WEEKLY", employeeId, monthStartDate, monthEndDate);
+            if (sourceReports.isEmpty()) {
+                continue;
+            }
+            List<ReportDetailItem> detailItems = buildDetailItemsFromReports(sourceReports);
+            String detailJson = toJson(detailItems);
+            String summary = llmProvider.generateText(buildEmployeeMonthlyPrompt(employeeId, monthStartDate, monthEndDate, detailItems));
+            requests.add(new EmployeeMonthlyReportArchiveRequest(
+                    employeeId,
+                    monthStartDate,
+                    monthEndDate,
+                    periodStartedAt,
+                    periodEndedAt,
+                    detailJson,
+                    summary,
+                    sourceReports.size(),
+                    sourceReports.stream().map(SourceReportSnapshot::id).toList()
+            ));
+        }
+        return requests;
+    }
+
+    private TeamMonthlyReportArchiveRequest buildTeamMonthlyReport(
+            LocalDate monthStartDate,
+            LocalDate monthEndDate,
+            LocalDateTime periodStartedAt,
+            LocalDateTime periodEndedAt
+    ) {
+        List<SourceReportSnapshot> sourceReports = findSourceReports("TEAM", "WEEKLY", null, monthStartDate, monthEndDate);
+        if (sourceReports.isEmpty()) {
+            return null;
+        }
+
+        List<ReportDetailItem> detailItems = buildDetailItemsFromReports(sourceReports);
+        String detailJson = toJson(detailItems);
+        String summary = llmProvider.generateText(buildTeamMonthlyPrompt(monthStartDate, monthEndDate, detailItems));
+        return new TeamMonthlyReportArchiveRequest(
+                monthStartDate,
+                monthEndDate,
+                periodStartedAt,
+                periodEndedAt,
+                detailJson,
+                summary,
+                sourceReports.size(),
+                sourceReports.stream().map(SourceReportSnapshot::id).toList()
+        );
+    }
+
+    private List<SourceReportSnapshot> findSourceReports(String reportScope, String periodType, Long employeeId, LocalDate startDate, LocalDate endDate) {
         if (employeeId == null) {
             return jdbcTemplate.query(
                     """
                             SELECT id, detail_json::text AS detail_json
                             FROM llm_reports
                             WHERE report_scope = ?
-                              AND period_type = 'DAILY'
+                              AND period_type = ?
                               AND target_employee_id IS NULL
                               AND period_start_date >= ?
                               AND period_end_date <= ?
@@ -364,6 +460,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                             resultSet.getString("detail_json")
                     ),
                     reportScope,
+                    periodType,
                     startDate,
                     endDate
             );
@@ -374,7 +471,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                         SELECT id, detail_json::text AS detail_json
                         FROM llm_reports
                         WHERE report_scope = ?
-                          AND period_type = 'DAILY'
+                          AND period_type = ?
                           AND target_employee_id = ?
                           AND period_start_date >= ?
                           AND period_end_date <= ?
@@ -385,6 +482,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                         resultSet.getString("detail_json")
                 ),
                 reportScope,
+                periodType,
                 employeeId,
                 startDate,
                 endDate
@@ -476,6 +574,62 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                 aggregatedAppUsageFromDailyReports:
                 %s
                 """.formatted(weekStartDate, weekEndDate, appSummary);
+    }
+
+    private String buildEmployeeMonthlyPrompt(Long employeeId, LocalDate monthStartDate, LocalDate monthEndDate, List<ReportDetailItem> detailItems) {
+        String appSummary = detailItems.stream()
+                .map(item -> "%s | durationSeconds=%d | ratio=%s".formatted(
+                        item.appName(),
+                        item.durationSeconds(),
+                        item.ratio()
+                ))
+                .collect(Collectors.joining("\n"));
+        if (appSummary.isBlank()) {
+            appSummary = "No monthly app usage data is available.";
+        }
+
+        return """
+                You are writing an encouraging monthly personal productivity summary for a WorkLens employee.
+                Write the report in Chinese by default.
+                Keep the tone supportive, practical, and concise.
+                Return plain text only.
+                Do not use Markdown, bullet syntax, headings, bold markers, tables, or code fences.
+                Do not mention any other employees or team-level comparisons.
+
+                Employee id: %d
+                Reporting month: %s to %s
+
+                Structured app usage aggregated from weekly reports:
+                %s
+                """.formatted(employeeId, monthStartDate, monthEndDate, appSummary);
+    }
+
+    private String buildTeamMonthlyPrompt(LocalDate monthStartDate, LocalDate monthEndDate, List<ReportDetailItem> detailItems) {
+        String appSummary = detailItems.stream()
+                .map(item -> "%s | durationSeconds=%d | ratio=%s".formatted(
+                        item.appName(),
+                        item.durationSeconds(),
+                        item.ratio()
+                ))
+                .collect(Collectors.joining("\n"));
+        if (appSummary.isBlank()) {
+            appSummary = "No aggregated monthly app usage data is available.";
+        }
+
+        return """
+                You are writing a concise monthly team usage briefing for a WorkLens manager.
+                Write the report in Chinese by default.
+                Return plain text only.
+                Do not use Markdown, bullet syntax, headings, bold markers, tables, or code fences.
+                Use only the aggregated metrics below.
+                Do not invent or infer any individual employee detail.
+                Do not mention names, employee identifiers, usernames, or raw activity records.
+
+                Reporting month: %s to %s
+
+                aggregatedAppUsageFromWeeklyReports:
+                %s
+                """.formatted(monthStartDate, monthEndDate, appSummary);
     }
 
     private record UsageRecordSnapshot(Long id, String appName, LocalDateTime startedAt, LocalDateTime endedAt) {

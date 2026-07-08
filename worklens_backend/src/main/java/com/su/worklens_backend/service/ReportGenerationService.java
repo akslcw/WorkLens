@@ -7,4 +7,6 @@ public interface ReportGenerationService {
     void generateDailyReports(LocalDate reportDate);
 
     void generateWeeklyReports(LocalDate weekEndDate);
+
+    void generateMonthlyReports(LocalDate monthEndDate);
 }
