@@ -12,6 +12,8 @@ from PIL import ImageDraw
 from worklens_desktop_client.background_runner import BackgroundRunner
 from worklens_desktop_client.sync_runtime import SyncRuntime
 from worklens_desktop_client.sync_runtime import SyncRuntimeConfig
+from worklens_desktop_client.tray_status import format_status_menu_text
+from worklens_desktop_client.tray_status import format_tray_title
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,6 +60,23 @@ def prompt_credentials(initial_username: str | None, initial_password: str | Non
 def main() -> None:
     args = parse_args()
     username, password = prompt_credentials(args.username, args.password)
+
+    status_holder = {"value": "STOPPED"}
+    display_name_holder = {"value": username}
+    icon_holder: dict[str, pystray.Icon] = {}
+
+    def refresh_icon() -> None:
+        icon = icon_holder.get("icon")
+        if icon is not None:
+            status = status_holder["value"]
+            icon.icon = create_status_image(status)
+            icon.title = format_tray_title(status, display_name_holder["value"])
+            icon.update_menu()
+
+    def update_login_user(login_result) -> None:
+        display_name_holder["value"] = login_result.display_name
+        refresh_icon()
+
     runtime = SyncRuntime(
         SyncRuntimeConfig(
             base_url=args.base_url,
@@ -65,19 +84,13 @@ def main() -> None:
             idle_threshold_seconds=args.idle_threshold_seconds,
             upload_interval_seconds=args.upload_interval_seconds,
             cache_db=args.cache_db,
-        )
+        ),
+        on_login=update_login_user,
     )
-
-    status_holder = {"value": "STOPPED"}
-    icon_holder: dict[str, pystray.Icon] = {}
 
     def update_status(status: str) -> None:
         status_holder["value"] = status
-        icon = icon_holder.get("icon")
-        if icon is not None:
-            icon.icon = create_status_image(status)
-            icon.title = f"WorkLens ({status})"
-            icon.update_menu()
+        refresh_icon()
 
     def worker(stop_event: threading.Event) -> None:
         runtime.run(username=username, password=password, stop_event=stop_event)
@@ -85,7 +98,7 @@ def main() -> None:
     runner = BackgroundRunner(worker=worker, on_status_change=update_status)
 
     def status_text(_) -> str:
-        return f"状态: {'运行中' if status_holder['value'] == 'RUNNING' else '已停止'}"
+        return format_status_menu_text(status_holder["value"], display_name_holder["value"])
 
     def quit_app(icon: pystray.Icon, item) -> None:
         runner.request_stop()
@@ -99,7 +112,7 @@ def main() -> None:
     icon = pystray.Icon(
         "worklens-desktop-client",
         create_status_image("STOPPED"),
-        "WorkLens (STOPPED)",
+        format_tray_title("STOPPED", display_name_holder["value"]),
         menu,
     )
     icon_holder["icon"] = icon

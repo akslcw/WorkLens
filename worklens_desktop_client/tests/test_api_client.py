@@ -13,6 +13,7 @@ class WorkLensApiClientTests(unittest.TestCase):
         response.json.return_value = {
             "token": "abc123",
             "username": "employee.alice",
+            "displayName": "Alice Chen",
             "role": "EMPLOYEE",
         }
         session.post.return_value = response
@@ -22,6 +23,7 @@ class WorkLensApiClientTests(unittest.TestCase):
 
         self.assertEqual("abc123", login_result.token)
         self.assertEqual("employee.alice", login_result.username)
+        self.assertEqual("Alice Chen", login_result.display_name)
         self.assertEqual("EMPLOYEE", login_result.role)
         session.post.assert_called_once_with(
             "http://localhost:8080/auth/login",
@@ -32,6 +34,21 @@ class WorkLensApiClientTests(unittest.TestCase):
             timeout=10,
         )
         response.raise_for_status.assert_called_once()
+
+    def test_login_falls_back_to_username_when_display_name_is_missing(self) -> None:
+        session = Mock()
+        response = Mock()
+        response.json.return_value = {
+            "token": "abc123",
+            "username": "employee.alice",
+            "role": "EMPLOYEE",
+        }
+        session.post.return_value = response
+        client = WorkLensApiClient("http://localhost:8080", session=session)
+
+        login_result = client.login("employee.alice", "Password123!")
+
+        self.assertEqual("employee.alice", login_result.display_name)
 
     def test_create_usage_record_posts_without_employee_id(self) -> None:
         session = Mock()

@@ -11,6 +11,7 @@ import requests
 class LoginResult:
     token: str
     username: str
+    display_name: str
     role: str
 
 
@@ -33,6 +34,7 @@ class WorkLensApiClient:
         return LoginResult(
             token=payload["token"],
             username=payload["username"],
+            display_name=payload.get("displayName") or payload["username"],
             role=payload["role"],
         )
 

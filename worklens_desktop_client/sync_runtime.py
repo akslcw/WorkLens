@@ -22,9 +22,10 @@ class SyncRuntimeConfig:
 
 
 class SyncRuntime:
-    def __init__(self, config: SyncRuntimeConfig, logger=None) -> None:
+    def __init__(self, config: SyncRuntimeConfig, logger=None, on_login=None) -> None:
         self._config = config
         self._logger = logger or (lambda message: print(message))
+        self._on_login = on_login or (lambda login_result: None)
 
     def run(self, username: str, password: str, stop_event: threading.Event, duration_seconds: int | None = None) -> None:
         client = WorkLensApiClient(self._config.base_url)
@@ -37,6 +38,7 @@ class SyncRuntime:
         if login_result.role != "EMPLOYEE":
             raise SystemExit("Only EMPLOYEE accounts can run the desktop collector.")
 
+        self._on_login(login_result)
         self._logger(f"Login succeeded for {login_result.username} ({login_result.role}).")
         startup_report = sync_service.upload_batch(login_result.token, [])
         self._logger(
