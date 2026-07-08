@@ -130,6 +130,9 @@ ALTER TABLE llm_reports
 ALTER TABLE llm_reports
     ADD COLUMN IF NOT EXISTS generated_at TIMESTAMP;
 
+ALTER TABLE llm_reports
+    ALTER COLUMN requester_employee_id DROP NOT NULL;
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_llm_reports_employee_period
     ON llm_reports (report_scope, period_type, target_employee_id, period_start_date, period_end_date)
     WHERE report_scope = 'EMPLOYEE';

@@ -2,6 +2,7 @@ package com.su.worklens_backend.service.impl;
 
 import com.su.worklens_backend.service.EmployeeDailyReportArchiveRequest;
 import com.su.worklens_backend.service.ReportArchiveService;
+import com.su.worklens_backend.service.TeamDailyReportArchiveRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +18,7 @@ import java.util.StringJoiner;
 public class ReportArchiveServiceImpl implements ReportArchiveService {
 
     private static final String EMPLOYEE_SCOPE = "EMPLOYEE";
+    private static final String TEAM_SCOPE = "TEAM";
     private static final String DAILY_PERIOD = "DAILY";
     private static final String RAW_USAGE_SOURCE = "RAW_USAGE";
 
@@ -28,13 +30,22 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
 
     @Override
     @Transactional
-    public void archiveEmployeeDailyReports(List<EmployeeDailyReportArchiveRequest> reports) {
+    public void archiveDailyReports(List<EmployeeDailyReportArchiveRequest> employeeReports, TeamDailyReportArchiveRequest teamReport) {
         List<Long> sourceRecordIds = new ArrayList<>();
-        for (EmployeeDailyReportArchiveRequest report : reports) {
+        for (EmployeeDailyReportArchiveRequest report : employeeReports) {
             insertEmployeeDailyReport(report);
             sourceRecordIds.addAll(report.sourceRecordIds());
         }
+        if (teamReport != null) {
+            insertTeamDailyReport(teamReport);
+        }
         deleteSourceRecords(sourceRecordIds);
+    }
+
+    @Override
+    @Transactional
+    public void archiveEmployeeDailyReports(List<EmployeeDailyReportArchiveRequest> reports) {
+        archiveDailyReports(reports, null);
     }
 
     @Override
@@ -92,6 +103,47 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
                 Timestamp.valueOf(report.periodEndedAt()),
                 Timestamp.valueOf(now),
                 EMPLOYEE_SCOPE,
+                DAILY_PERIOD,
+                report.reportDate(),
+                report.reportDate(),
+                report.detailJson(),
+                RAW_USAGE_SOURCE,
+                report.sourceCount(),
+                Timestamp.valueOf(now)
+        );
+    }
+
+    private void insertTeamDailyReport(TeamDailyReportArchiveRequest report) {
+        LocalDateTime now = LocalDateTime.now();
+        jdbcTemplate.update(
+                """
+                        INSERT INTO llm_reports (
+                            report_type,
+                            requester_employee_id,
+                            target_employee_id,
+                            summary,
+                            period_started_at,
+                            period_ended_at,
+                            created_at,
+                            report_scope,
+                            period_type,
+                            period_start_date,
+                            period_end_date,
+                            detail_json,
+                            source_layer,
+                            source_count,
+                            generated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
+                        """,
+                "TEAM_DAILY",
+                null,
+                null,
+                report.summary(),
+                Timestamp.valueOf(report.periodStartedAt()),
+                Timestamp.valueOf(report.periodEndedAt()),
+                Timestamp.valueOf(now),
+                TEAM_SCOPE,
                 DAILY_PERIOD,
                 report.reportDate(),
                 report.reportDate(),

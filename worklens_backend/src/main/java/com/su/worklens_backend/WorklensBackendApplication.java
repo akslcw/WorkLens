@@ -1,10 +1,17 @@
 package com.su.worklens_backend;
 
 import org.mybatis.spring.annotation.MapperScan;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+import java.time.Clock;
+import java.time.ZoneId;
 
 @MapperScan("com.su.worklens_backend.mapper")
+@EnableScheduling
 @SpringBootApplication
 public class WorklensBackendApplication {
 
@@ -12,4 +19,8 @@ public class WorklensBackendApplication {
         SpringApplication.run(WorklensBackendApplication.class, args);
     }
 
+    @Bean
+    public Clock worklensReportClock(@Value("${worklens.reports.zone:Asia/Hong_Kong}") String zoneId) {
+        return Clock.system(ZoneId.of(zoneId));
+    }
 }

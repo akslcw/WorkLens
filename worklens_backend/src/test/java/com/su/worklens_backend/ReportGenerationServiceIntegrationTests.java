@@ -102,6 +102,60 @@ class ReportGenerationServiceIntegrationTests extends PostgresIntegrationTestSup
     }
 
     @Test
+    void generateDailyReportsPersistsTeamDailyReportFromAggregatedRawUsageWithoutIndividualDetails() throws Exception {
+        long aliceEmployeeId = insertUser("employee.alice", "EMPLOYEE", "E001", "Alice");
+        long bobEmployeeId = insertUser("employee.bob", "EMPLOYEE", "E002", "Bob");
+        LocalDate reportDate = LocalDate.of(2026, 7, 8);
+
+        insertUsageRecord(aliceEmployeeId, "Chrome", "2026-07-08T09:00:00", "2026-07-08T10:00:00");
+        insertUsageRecord(aliceEmployeeId, "Slack", "2026-07-08T10:00:00", "2026-07-08T10:30:00");
+        insertUsageRecord(bobEmployeeId, "Chrome", "2026-07-08T11:00:00", "2026-07-08T11:45:00");
+
+        given(llmProvider.generateText(anyString()))
+                .willReturn("Alice daily summary", "Bob daily summary", "Team daily summary");
+
+        reportGenerationService.generateDailyReports(reportDate);
+
+        List<Map<String, Object>> reports = jdbcTemplate.queryForList(
+                """
+                        SELECT report_scope, period_type, requester_employee_id, target_employee_id,
+                               period_start_date, period_end_date, detail_json::text AS detail_json,
+                               summary, source_layer, source_count
+                        FROM llm_reports
+                        WHERE report_scope = 'TEAM' AND period_type = 'DAILY'
+                        """
+        );
+        assertThat(reports).hasSize(1);
+
+        Map<String, Object> teamReport = reports.get(0);
+        assertThat(teamReport.get("requester_employee_id")).isNull();
+        assertThat(teamReport.get("target_employee_id")).isNull();
+        assertThat(teamReport.get("period_start_date").toString()).isEqualTo("2026-07-08");
+        assertThat(teamReport.get("period_end_date").toString()).isEqualTo("2026-07-08");
+        assertThat(teamReport.get("summary")).isEqualTo("Team daily summary");
+        assertThat(teamReport.get("source_layer")).isEqualTo("RAW_USAGE");
+        assertThat(teamReport.get("source_count")).isEqualTo(3);
+
+        List<Map<String, Object>> detailItems = objectMapper.readValue(
+                teamReport.get("detail_json").toString(),
+                new TypeReference<>() {
+                }
+        );
+        assertThat(detailItems).extracting(item -> item.get("appName")).containsExactly("Chrome", "Slack");
+        assertThat(detailItems).extracting(item -> item.get("durationSeconds")).containsExactly(6300, 1800);
+        assertThat(detailItems).extracting(item -> item.get("durationMinutes")).containsExactly(105, 30);
+        assertThat(detailItems).extracting(item -> item.get("ratio")).containsExactly(0.7778, 0.2222);
+        assertThat(teamReport.get("detail_json").toString())
+                .doesNotContain("Alice")
+                .doesNotContain("Bob")
+                .doesNotContain("E001")
+                .doesNotContain("E002")
+                .doesNotContain("employeeId")
+                .doesNotContain("startedAt")
+                .doesNotContain("endedAt");
+    }
+
+    @Test
     void generateDailyReportsDoesNotDeleteRawRecordsWhenLlmFailsBeforeArchiveTransaction() {
         long aliceEmployeeId = insertUser("employee.alice", "EMPLOYEE", "E001", "Alice");
         LocalDate reportDate = LocalDate.of(2026, 7, 8);

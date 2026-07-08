@@ -6,6 +6,8 @@ import java.util.List;
 
 public interface ReportArchiveService {
 
+    void archiveDailyReports(List<EmployeeDailyReportArchiveRequest> employeeReports, TeamDailyReportArchiveRequest teamReport);
+
     void archiveEmployeeDailyReports(List<EmployeeDailyReportArchiveRequest> reports);
 
     void archiveEmployeeDailyReport(

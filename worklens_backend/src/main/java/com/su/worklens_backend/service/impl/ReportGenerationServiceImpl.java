@@ -6,6 +6,7 @@ import com.su.worklens_backend.service.EmployeeDailyReportArchiveRequest;
 import com.su.worklens_backend.service.LlmProvider;
 import com.su.worklens_backend.service.ReportArchiveService;
 import com.su.worklens_backend.service.ReportGenerationService;
+import com.su.worklens_backend.service.TeamDailyReportArchiveRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -50,12 +51,14 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         LocalDateTime periodEndedAt = reportDate.plusDays(1).atStartOfDay();
         List<Long> employeeIds = findEmployeeIdsWithUsage(periodStartedAt, periodEndedAt);
         List<EmployeeDailyReportArchiveRequest> archiveRequests = new ArrayList<>();
+        List<UsageRecordSnapshot> allSourceRecords = new ArrayList<>();
 
         for (Long employeeId : employeeIds) {
             List<UsageRecordSnapshot> sourceRecords = findDailyUsageRecords(employeeId, periodStartedAt, periodEndedAt);
             if (sourceRecords.isEmpty()) {
                 continue;
             }
+            allSourceRecords.addAll(sourceRecords);
 
             List<ReportDetailItem> detailItems = buildDetailItems(sourceRecords);
             String detailJson = toJson(detailItems);
@@ -74,7 +77,20 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         }
 
         if (!archiveRequests.isEmpty()) {
-            reportArchiveService.archiveEmployeeDailyReports(archiveRequests);
+            List<ReportDetailItem> teamDetailItems = buildDetailItems(allSourceRecords);
+            String teamDetailJson = toJson(teamDetailItems);
+            String teamSummary = llmProvider.generateText(
+                    buildTeamDailyPrompt(reportDate, teamDetailItems, employeeIds.size(), allSourceRecords)
+            );
+            TeamDailyReportArchiveRequest teamReport = new TeamDailyReportArchiveRequest(
+                    reportDate,
+                    periodStartedAt,
+                    periodEndedAt,
+                    teamDetailJson,
+                    teamSummary,
+                    allSourceRecords.size()
+            );
+            reportArchiveService.archiveDailyReports(archiveRequests, teamReport);
         }
     }
 
@@ -185,6 +201,52 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                 Structured app usage:
                 %s
                 """.formatted(employeeId, reportDate, appSummary);
+    }
+
+    private String buildTeamDailyPrompt(
+            LocalDate reportDate,
+            List<ReportDetailItem> detailItems,
+            int activeEmployeeCount,
+            List<UsageRecordSnapshot> sourceRecords
+    ) {
+        long totalDurationSeconds = sourceRecords.stream()
+                .mapToLong(this::calculateDurationSeconds)
+                .sum();
+        long teamAverageUsageSeconds = activeEmployeeCount == 0 ? 0 : Math.round((double) totalDurationSeconds / activeEmployeeCount);
+        String appSummary = detailItems.stream()
+                .map(item -> "%s | durationSeconds=%d | ratio=%s".formatted(
+                        item.appName(),
+                        item.durationSeconds(),
+                        item.ratio()
+                ))
+                .collect(Collectors.joining("\n"));
+        if (appSummary.isBlank()) {
+            appSummary = "No aggregated app usage data is available.";
+        }
+
+        return """
+                You are writing a concise daily team usage briefing for a WorkLens manager.
+                Write the report in Chinese by default.
+                Return plain text only.
+                Do not use Markdown, bullet syntax, headings, bold markers, tables, or code fences.
+                Use only the aggregated metrics below.
+                Do not invent or infer any individual employee detail.
+                Do not mention names, employee identifiers, usernames, or raw activity records.
+
+                Report date: %s
+                activeEmployeeCount: %d
+                totalUsageSeconds: %d
+                teamAverageUsageSeconds: %d
+
+                aggregatedAppUsage:
+                %s
+                """.formatted(
+                reportDate,
+                activeEmployeeCount,
+                totalDurationSeconds,
+                teamAverageUsageSeconds,
+                appSummary
+        );
     }
 
     private record UsageRecordSnapshot(Long id, String appName, LocalDateTime startedAt, LocalDateTime endedAt) {
