@@ -41,6 +41,7 @@ class UsageRecordControllerIntegrationTests extends PostgresIntegrationTestSuppo
 
     @BeforeEach
     void cleanDatabase() {
+        truncateIfExists("TRUNCATE TABLE llm_reports RESTART IDENTITY CASCADE");
         truncateIfExists("TRUNCATE TABLE usage_records RESTART IDENTITY CASCADE");
         truncateIfExists("TRUNCATE TABLE auth_tokens RESTART IDENTITY CASCADE");
         truncateIfExists("TRUNCATE TABLE auth_users RESTART IDENTITY CASCADE");
@@ -203,6 +204,71 @@ class UsageRecordControllerIntegrationTests extends PostgresIntegrationTestSuppo
                 .andExpect(jsonPath("$[0].username").doesNotExist());
     }
 
+    @Test
+    void employeeUsageViewReturnsLiveAppCardsForRawRecordsOnRequestedDate() throws Exception {
+        long aliceEmployeeId = insertUser("employee.alice", PASSWORD_HASH, "EMPLOYEE", "E001", "Alice");
+        long bobEmployeeId = insertUser("employee.bob", PASSWORD_HASH, "EMPLOYEE", "E002", "Bob");
+        insertUsageRecord(aliceEmployeeId, "Chrome", "2026-07-08T09:00:00", "2026-07-08T10:00:00");
+        insertUsageRecord(aliceEmployeeId, "Slack", "2026-07-08T10:00:00", "2026-07-08T10:30:00");
+        insertUsageRecord(aliceEmployeeId, "Chrome", "2026-07-08T11:00:00", "2026-07-08T11:15:00");
+        insertUsageRecord(aliceEmployeeId, "Chrome", "2026-07-09T09:00:00", "2026-07-09T09:20:00");
+        insertUsageRecord(bobEmployeeId, "Teams", "2026-07-08T09:00:00", "2026-07-08T09:45:00");
+        String aliceToken = loginAndReadToken("employee.alice", PASSWORD);
+
+        mockMvc.perform(get("/usage-records/view")
+                        .queryParam("date", "2026-07-08")
+                        .queryParam("page", "1")
+                        .queryParam("pageSize", "10")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode").value("LIVE_USAGE"))
+                .andExpect(jsonPath("$.date").value("2026-07-08"))
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.pageSize").value(10))
+                .andExpect(jsonPath("$.totalApps").value(2))
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].appName").value("Chrome"))
+                .andExpect(jsonPath("$.items[0].durationSeconds").value(4500))
+                .andExpect(jsonPath("$.items[0].segments.length()").value(2))
+                .andExpect(jsonPath("$.items[0].segments[0].startedAt").value("2026-07-08T09:00:00"))
+                .andExpect(jsonPath("$.items[0].segments[0].endedAt").value("2026-07-08T10:00:00"))
+                .andExpect(jsonPath("$.items[1].appName").value("Slack"))
+                .andExpect(jsonPath("$.items[1].durationSeconds").value(1800))
+                .andExpect(jsonPath("$.report").doesNotExist());
+    }
+
+    @Test
+    void employeeUsageViewReturnsCoveringReportWhenRawRecordsHaveBeenRolledUp() throws Exception {
+        long aliceEmployeeId = insertUser("employee.alice", PASSWORD_HASH, "EMPLOYEE", "E001", "Alice");
+        insertEmployeeReport(aliceEmployeeId, "EMPLOYEE", "WEEKLY", "2026-07-06", "2026-07-12", """
+                [
+                  {"appName":"Chrome","durationSeconds":5400,"durationMinutes":90,"ratio":0.6429},
+                  {"appName":"IDE","durationSeconds":1800,"durationMinutes":30,"ratio":0.2143},
+                  {"appName":"Slack","durationSeconds":1200,"durationMinutes":20,"ratio":0.1429}
+                ]
+                """, "Alice weekly summary");
+        String aliceToken = loginAndReadToken("employee.alice", PASSWORD);
+
+        mockMvc.perform(get("/usage-records/view")
+                        .queryParam("date", "2026-07-08")
+                        .header("Authorization", "Bearer " + aliceToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode").value("REPORT"))
+                .andExpect(jsonPath("$.date").value("2026-07-08"))
+                .andExpect(jsonPath("$.items").doesNotExist())
+                .andExpect(jsonPath("$.report.reportScope").value("EMPLOYEE"))
+                .andExpect(jsonPath("$.report.periodType").value("WEEKLY"))
+                .andExpect(jsonPath("$.report.periodStartDate").value("2026-07-06"))
+                .andExpect(jsonPath("$.report.periodEndDate").value("2026-07-12"))
+                .andExpect(jsonPath("$.report.summary").value("Alice weekly summary"))
+                .andExpect(jsonPath("$.report.details.length()").value(3))
+                .andExpect(jsonPath("$.report.details[0].appName").value("Chrome"))
+                .andExpect(jsonPath("$.report.details[0].durationSeconds").value(5400))
+                .andExpect(jsonPath("$.report.details[0].ratio").value(0.6429))
+                .andExpect(jsonPath("$.report.targetEmployeeId").doesNotExist())
+                .andExpect(jsonPath("$.report.requesterEmployeeId").doesNotExist());
+    }
+
     private long insertUser(String username, String passwordHash, String role, String employeeNo, String name) {
         jdbcTemplate.update(
                 "INSERT INTO employees (name, employee_no, created_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
@@ -270,6 +336,39 @@ class UsageRecordControllerIntegrationTests extends PostgresIntegrationTestSuppo
                 appName,
                 LocalDateTime.parse(startedAt),
                 LocalDateTime.parse(endedAt)
+        );
+    }
+
+    private void insertEmployeeReport(
+            long employeeId,
+            String reportScope,
+            String periodType,
+            String periodStartDate,
+            String periodEndDate,
+            String detailJson,
+            String summary
+    ) {
+        jdbcTemplate.update(
+                """
+                        INSERT INTO llm_reports (
+                            report_type, requester_employee_id, target_employee_id, summary,
+                            period_started_at, period_ended_at, created_at, report_scope, period_type,
+                            period_start_date, period_end_date, detail_json, source_layer, source_count, generated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?::date, ?::date, CURRENT_TIMESTAMP,
+                                ?, ?, ?::date, ?::date, ?::jsonb, 'DAILY_REPORTS', 1, CURRENT_TIMESTAMP)
+                        """,
+                reportScope + "_" + periodType,
+                employeeId,
+                employeeId,
+                summary,
+                periodStartDate,
+                periodEndDate,
+                reportScope,
+                periodType,
+                periodStartDate,
+                periodEndDate,
+                detailJson
         );
     }
 
