@@ -1,5 +1,5 @@
 import { request } from './http'
-import type { UsageRecord } from './usageRecords'
+import type { UsageRecord, UsageView } from './usageRecords'
 
 export type DetailAccessRequest = {
   id: number
@@ -46,6 +46,15 @@ export async function createDetailAccessRequest(payload: CreateDetailAccessReque
 
 export async function viewApprovedUsageRecords(requestId: number, token: string) {
   return request<UsageRecord[]>(`/detail-access-requests/${requestId}/usage-records`, { method: 'GET' }, token)
+}
+
+export async function viewApprovedUsageView(requestId: number, token: string, date: string) {
+  const query = new URLSearchParams({
+    date,
+    page: '1',
+    pageSize: '10',
+  })
+  return request<UsageView>(`/detail-access-requests/${requestId}/usage-view?${query.toString()}`, { method: 'GET' }, token)
 }
 
 export async function listRequestsTargetingCurrentEmployee(token: string) {

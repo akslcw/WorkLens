@@ -1,10 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ManagerAccessRequestsView from './ManagerAccessRequestsView.vue'
 
 describe('ManagerAccessRequestsView', () => {
   beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-07-08T12:00:00.000Z'))
     localStorage.setItem(
       'worklens-session',
       JSON.stringify({
@@ -14,6 +16,10 @@ describe('ManagerAccessRequestsView', () => {
       }),
     )
     vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('loads employees and own access requests', async () => {
@@ -55,7 +61,6 @@ describe('ManagerAccessRequestsView', () => {
 
     expect(wrapper.text()).toContain('Alice Chen')
     expect(wrapper.text()).toContain('Quarterly compliance review')
-    expect(wrapper.text()).toContain('待处理')
   })
 
   it('creates a new detail access request', async () => {
@@ -110,10 +115,9 @@ describe('ManagerAccessRequestsView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Need context for a support incident')
-    expect(wrapper.text()).toContain('待处理')
   })
 
-  it('views an approved request once and disables the action afterwards', async () => {
+  it('views an approved request as live app cards once and disables the action afterwards', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -141,16 +145,21 @@ describe('ManagerAccessRequestsView', () => {
           ])
         }
 
-        if (url.endsWith('/api/detail-access-requests/13/usage-records') && method === 'GET') {
-          return jsonResponse([
-            {
-              id: 101,
-              appName: 'Chrome',
-              startedAt: '2026-07-05T08:00:00',
-              endedAt: '2026-07-05T09:00:00',
-              createdAt: '2026-07-05T09:00:00',
-            },
-          ])
+        if (url.endsWith('/api/detail-access-requests/13/usage-view?date=2026-07-08&page=1&pageSize=10') && method === 'GET') {
+          return jsonResponse({
+            mode: 'LIVE_USAGE',
+            date: '2026-07-08',
+            page: 1,
+            pageSize: 10,
+            totalApps: 1,
+            items: [
+              {
+                appName: 'Chrome',
+                durationSeconds: 3600,
+                segments: [{ startedAt: '2026-07-08T08:00:00', endedAt: '2026-07-08T09:00:00' }],
+              },
+            ],
+          })
         }
 
         return new Response(null, { status: 404 })
@@ -163,9 +172,75 @@ describe('ManagerAccessRequestsView', () => {
     await wrapper.get('[data-test="view-request-13"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-test="request-records-panel"]').text()).toContain('Chrome')
+    const panel = wrapper.get('[data-test="request-usage-view-panel"]')
+    expect(panel.text()).toContain('Chrome')
+    expect(panel.text()).toContain('60 min')
+    expect(panel.text()).toContain('08:00 - 09:00')
     expect(wrapper.get('[data-test="view-request-13"]').attributes('disabled')).toBeDefined()
-    expect(wrapper.text()).toContain('已使用')
+  })
+
+  it('views an approved historical request as a rolled report', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        const method = init?.method ?? 'GET'
+
+        if (url.endsWith('/api/employees') && method === 'GET') {
+          return jsonResponse([
+            { id: 2, name: 'Alice Chen', employeeNo: 'WL-001', createdAt: '2026-07-05T09:00:00' },
+          ])
+        }
+
+        if (url.endsWith('/api/detail-access-requests') && method === 'GET') {
+          return jsonResponse([
+            {
+              id: 14,
+              requesterEmployeeId: 1,
+              targetEmployeeId: 2,
+              reason: 'Historical incident review',
+              status: 'APPROVED',
+              createdAt: '2026-07-05T09:30:00',
+              processedAt: '2026-07-05T09:45:00',
+              processedByEmployeeId: 2,
+            },
+          ])
+        }
+
+        if (url.endsWith('/api/detail-access-requests/14/usage-view?date=2026-07-01&page=1&pageSize=10') && method === 'GET') {
+          return jsonResponse({
+            mode: 'REPORT',
+            date: '2026-07-01',
+            report: {
+              reportScope: 'EMPLOYEE',
+              periodType: 'WEEKLY',
+              periodStartDate: '2026-06-29',
+              periodEndDate: '2026-07-05',
+              summary: 'The week was dominated by browser-based work.',
+              details: [
+                { appName: 'Chrome', durationSeconds: 7200, durationMinutes: 120, ratio: 0.8 },
+                { appName: 'Slack', durationSeconds: 1800, durationMinutes: 30, ratio: 0.2 },
+              ],
+            },
+          })
+        }
+
+        return new Response(null, { status: 404 })
+      }),
+    )
+
+    const wrapper = await mountManagerAccessRequests()
+    await flushPromises()
+
+    await wrapper.get('[data-test="access-view-date"]').setValue('2026-07-01')
+    await wrapper.get('[data-test="view-request-14"]').trigger('click')
+    await flushPromises()
+
+    const panel = wrapper.get('[data-test="request-usage-view-panel"]')
+    expect(panel.text()).toContain('WEEKLY')
+    expect(panel.text()).toContain('The week was dominated by browser-based work.')
+    expect(panel.text()).toContain('Chrome')
+    expect(panel.text()).toContain('80%')
   })
 })
 

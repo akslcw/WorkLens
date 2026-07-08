@@ -6,10 +6,10 @@ import { getEmployees } from '../api/employees'
 import {
   createDetailAccessRequest,
   listOwnDetailAccessRequests,
-  viewApprovedUsageRecords,
+  viewApprovedUsageView,
   type DetailAccessRequest,
 } from '../api/detailAccessRequests'
-import type { UsageRecord } from '../api/usageRecords'
+import type { UsageAppCard, UsageView } from '../api/usageRecords'
 import { clearSession, readStoredSession } from '../auth/session'
 import ManagerWorkspaceNav from '../components/ManagerWorkspaceNav.vue'
 
@@ -18,8 +18,9 @@ const session = readStoredSession()
 
 const employees = ref<Employee[]>([])
 const requests = ref<DetailAccessRequest[]>([])
-const selectedRequestRecords = ref<UsageRecord[]>([])
+const selectedRequestUsageView = ref<UsageView | null>(null)
 const selectedRequestId = ref<number | null>(null)
+const accessViewDate = ref(todayDateString())
 const loading = ref(false)
 const submitting = ref(false)
 const viewingRequestId = ref<number | null>(null)
@@ -99,9 +100,9 @@ async function handleViewApprovedRequest(request: DetailAccessRequest) {
   errorMessage.value = ''
 
   try {
-    const records = await viewApprovedUsageRecords(request.id, session.token)
+    const usageView = await viewApprovedUsageView(request.id, session.token, accessViewDate.value)
     selectedRequestId.value = request.id
-    selectedRequestRecords.value = records
+    selectedRequestUsageView.value = usageView
     requests.value = requests.value.map((item) =>
       item.id === request.id ? { ...item, status: 'USED' } : item,
     )
@@ -138,6 +139,14 @@ function canViewRequest(request: DetailAccessRequest) {
   return request.status === 'APPROVED'
 }
 
+function todayDateString() {
+  const date = new Date()
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function formatDateTime(value: string | null) {
   if (!value) {
     return '未处理'
@@ -152,10 +161,36 @@ function formatDateTime(value: string | null) {
   return `${year}/${month}/${day} ${hour}:${minute}`
 }
 
-function formatDuration(record: UsageRecord) {
-  const startedAt = new Date(record.startedAt).getTime()
-  const endedAt = new Date(record.endedAt).getTime()
-  return `${Math.round((endedAt - startedAt) / 60000)} min`
+function formatDateOnly(value: string) {
+  const [year, month, day] = value.split('-')
+  return `${year}/${month}/${day}`
+}
+
+function formatTimeOnly(value: string) {
+  const date = new Date(value)
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `${hour}:${minute}`
+}
+
+function formatDurationSeconds(seconds: number) {
+  return `${Math.round(seconds / 60)} min`
+}
+
+function formatPercent(ratio: number) {
+  const percent = Math.round(ratio * 1000) / 10
+  return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(1)}%`
+}
+
+function usageReportPeriodLabel() {
+  if (!selectedRequestUsageView.value?.report) {
+    return ''
+  }
+  return `${formatDateOnly(selectedRequestUsageView.value.report.periodStartDate)} - ${formatDateOnly(selectedRequestUsageView.value.report.periodEndDate)}`
+}
+
+function appCardKey(card: UsageAppCard, index: number) {
+  return `${card.appName}-${index}`
 }
 
 function toErrorMessage(error: unknown, fallback: string) {
@@ -228,11 +263,15 @@ function toErrorMessage(error: unknown, fallback: string) {
         </article>
 
         <article class="panel-card">
-          <div class="panel-head">
+          <div class="panel-head panel-head--with-control">
             <div>
               <p class="eyebrow">My Requests</p>
               <h2>我发起的申请</h2>
             </div>
+            <label class="date-control">
+              <span>查看日期</span>
+              <input data-test="access-view-date" v-model="accessViewDate" type="date" />
+            </label>
           </div>
 
           <div v-if="requests.length === 0" class="empty-state">
@@ -277,26 +316,70 @@ function toErrorMessage(error: unknown, fallback: string) {
       </section>
 
       <section
-        v-if="selectedRequestId !== null"
-        data-test="request-records-panel"
+        v-if="selectedRequestId !== null && selectedRequestUsageView"
+        data-test="request-usage-view-panel"
         class="panel-card records-panel"
       >
         <div class="panel-head">
           <div>
             <p class="eyebrow">Consumed Authorization</p>
-            <h2>已读取的个人明细</h2>
+            <h2>已读取的个人使用视图</h2>
           </div>
         </div>
 
-        <ul class="records-list">
-          <li v-for="record in selectedRequestRecords" :key="record.id" class="record-row">
-            <div>
-              <strong>{{ record.appName }}</strong>
-              <p>{{ formatDateTime(record.startedAt) }} - {{ formatDateTime(record.endedAt) }}</p>
-            </div>
-            <span class="duration-chip">{{ formatDuration(record) }}</span>
-          </li>
-        </ul>
+        <template v-if="selectedRequestUsageView.mode === 'LIVE_USAGE'">
+          <div v-if="(selectedRequestUsageView.items ?? []).length === 0" class="empty-state">
+            <strong>暂无实时使用记录</strong>
+            <p>该日期没有可展示的实时应用使用数据。</p>
+          </div>
+
+          <ul v-else class="records-list">
+            <li
+              v-for="(card, index) in selectedRequestUsageView.items"
+              :key="appCardKey(card, index)"
+              class="record-row"
+            >
+              <details open>
+                <summary>
+                  <span>
+                    <strong>{{ card.appName }}</strong>
+                    <small>{{ card.segments.length }} 个时间段</small>
+                  </span>
+                  <span class="duration-chip">{{ formatDurationSeconds(card.durationSeconds) }}</span>
+                </summary>
+                <ul class="segment-list">
+                  <li v-for="segment in card.segments" :key="`${segment.startedAt}-${segment.endedAt}`">
+                    {{ formatTimeOnly(segment.startedAt) }} - {{ formatTimeOnly(segment.endedAt) }}
+                  </li>
+                </ul>
+              </details>
+            </li>
+          </ul>
+        </template>
+
+        <article v-else-if="selectedRequestUsageView.report" class="usage-report">
+          <div class="report-meta">
+            <span>{{ selectedRequestUsageView.report.periodType }}</span>
+            <span>{{ usageReportPeriodLabel() }}</span>
+          </div>
+          <p class="report-summary">{{ selectedRequestUsageView.report.summary }}</p>
+          <table class="report-detail-table">
+            <thead>
+              <tr>
+                <th>应用</th>
+                <th>累计时长</th>
+                <th>占比</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="detail in selectedRequestUsageView.report.details" :key="detail.appName">
+                <td>{{ detail.appName }}</td>
+                <td>{{ formatDurationSeconds(detail.durationSeconds) }}</td>
+                <td>{{ formatPercent(detail.ratio) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </article>
       </section>
     </template>
   </main>
@@ -412,8 +495,29 @@ function toErrorMessage(error: unknown, fallback: string) {
   margin-bottom: 20px;
 }
 
+.panel-head--with-control {
+  align-items: center;
+}
+
 .panel-head h2 {
   font-size: 1.35rem;
+}
+
+.date-control {
+  display: grid;
+  gap: 6px;
+  min-width: 160px;
+  color: #5d6e83;
+  font-size: 0.82rem;
+}
+
+.date-control input {
+  min-height: 38px;
+  border: 1px solid #d2dde8;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #1d2e47;
+  background: #ffffff;
 }
 
 .request-form {
@@ -537,6 +641,28 @@ function toErrorMessage(error: unknown, fallback: string) {
   gap: 8px;
 }
 
+.record-row details {
+  width: 100%;
+}
+
+.record-row summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+}
+
+.record-row summary::-webkit-details-marker {
+  display: none;
+}
+
+.record-row summary > span:first-child {
+  display: grid;
+  gap: 6px;
+}
+
 .request-head {
   display: flex;
   gap: 12px;
@@ -580,6 +706,74 @@ function toErrorMessage(error: unknown, fallback: string) {
   color: #35506b;
 }
 
+.segment-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.segment-list li {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f6f9fc;
+  color: #5d6e83;
+  font-size: 0.9rem;
+}
+
+.usage-report {
+  display: grid;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: 10px;
+  border: 1px solid #dbe4ee;
+  background: #ffffff;
+}
+
+.report-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.report-meta span {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #edf3f9;
+  color: #35506b;
+  font-size: 0.8rem;
+}
+
+.report-summary {
+  margin: 0;
+  line-height: 1.7;
+  color: #5d6e83;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.report-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.report-detail-table th,
+.report-detail-table td {
+  padding: 11px 10px;
+  border-bottom: 1px solid #e4ebf2;
+  text-align: left;
+  color: #35506b;
+}
+
+.report-detail-table th {
+  background: #f5f8fb;
+  color: #1d2e47;
+  font-size: 0.82rem;
+}
+
 .records-panel {
   margin-top: 22px;
 }
@@ -592,6 +786,7 @@ function toErrorMessage(error: unknown, fallback: string) {
 
   .hero-card,
   .content-grid,
+  .panel-head--with-control,
   .request-row,
   .record-row {
     grid-template-columns: 1fr;
@@ -610,7 +805,8 @@ function toErrorMessage(error: unknown, fallback: string) {
   }
 
   .ghost-button,
-  .secondary-button {
+  .secondary-button,
+  .date-control {
     width: 100%;
   }
 }
