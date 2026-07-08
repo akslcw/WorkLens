@@ -1,8 +1,10 @@
 package com.su.worklens_backend.service.impl;
 
 import com.su.worklens_backend.service.EmployeeDailyReportArchiveRequest;
+import com.su.worklens_backend.service.EmployeeWeeklyReportArchiveRequest;
 import com.su.worklens_backend.service.ReportArchiveService;
 import com.su.worklens_backend.service.TeamDailyReportArchiveRequest;
+import com.su.worklens_backend.service.TeamWeeklyReportArchiveRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,7 +22,9 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
     private static final String EMPLOYEE_SCOPE = "EMPLOYEE";
     private static final String TEAM_SCOPE = "TEAM";
     private static final String DAILY_PERIOD = "DAILY";
+    private static final String WEEKLY_PERIOD = "WEEKLY";
     private static final String RAW_USAGE_SOURCE = "RAW_USAGE";
+    private static final String DAILY_REPORTS_SOURCE = "DAILY_REPORTS";
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -40,6 +44,21 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
             insertTeamDailyReport(teamReport);
         }
         deleteSourceRecords(sourceRecordIds);
+    }
+
+    @Override
+    @Transactional
+    public void archiveWeeklyReports(List<EmployeeWeeklyReportArchiveRequest> employeeReports, TeamWeeklyReportArchiveRequest teamReport) {
+        List<Long> sourceReportIds = new ArrayList<>();
+        for (EmployeeWeeklyReportArchiveRequest report : employeeReports) {
+            insertEmployeeWeeklyReport(report);
+            sourceReportIds.addAll(report.sourceReportIds());
+        }
+        if (teamReport != null) {
+            insertTeamWeeklyReport(teamReport);
+            sourceReportIds.addAll(teamReport.sourceReportIds());
+        }
+        deleteSourceReports(sourceReportIds);
     }
 
     @Override
@@ -154,6 +173,88 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
         );
     }
 
+    private void insertEmployeeWeeklyReport(EmployeeWeeklyReportArchiveRequest report) {
+        LocalDateTime now = LocalDateTime.now();
+        jdbcTemplate.update(
+                """
+                        INSERT INTO llm_reports (
+                            report_type,
+                            requester_employee_id,
+                            target_employee_id,
+                            summary,
+                            period_started_at,
+                            period_ended_at,
+                            created_at,
+                            report_scope,
+                            period_type,
+                            period_start_date,
+                            period_end_date,
+                            detail_json,
+                            source_layer,
+                            source_count,
+                            generated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
+                        """,
+                "EMPLOYEE_WEEKLY",
+                report.employeeId(),
+                report.employeeId(),
+                report.summary(),
+                Timestamp.valueOf(report.periodStartedAt()),
+                Timestamp.valueOf(report.periodEndedAt()),
+                Timestamp.valueOf(now),
+                EMPLOYEE_SCOPE,
+                WEEKLY_PERIOD,
+                report.periodStartDate(),
+                report.periodEndDate(),
+                report.detailJson(),
+                DAILY_REPORTS_SOURCE,
+                report.sourceCount(),
+                Timestamp.valueOf(now)
+        );
+    }
+
+    private void insertTeamWeeklyReport(TeamWeeklyReportArchiveRequest report) {
+        LocalDateTime now = LocalDateTime.now();
+        jdbcTemplate.update(
+                """
+                        INSERT INTO llm_reports (
+                            report_type,
+                            requester_employee_id,
+                            target_employee_id,
+                            summary,
+                            period_started_at,
+                            period_ended_at,
+                            created_at,
+                            report_scope,
+                            period_type,
+                            period_start_date,
+                            period_end_date,
+                            detail_json,
+                            source_layer,
+                            source_count,
+                            generated_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
+                        """,
+                "TEAM_WEEKLY",
+                null,
+                null,
+                report.summary(),
+                Timestamp.valueOf(report.periodStartedAt()),
+                Timestamp.valueOf(report.periodEndedAt()),
+                Timestamp.valueOf(now),
+                TEAM_SCOPE,
+                WEEKLY_PERIOD,
+                report.periodStartDate(),
+                report.periodEndDate(),
+                report.detailJson(),
+                DAILY_REPORTS_SOURCE,
+                report.sourceCount(),
+                Timestamp.valueOf(now)
+        );
+    }
+
     private void deleteSourceRecords(List<Long> sourceRecordIds) {
         if (sourceRecordIds.isEmpty()) {
             return;
@@ -168,6 +269,24 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
 
         jdbcTemplate.update(
                 "DELETE FROM usage_records WHERE id IN (" + placeholders + ")",
+                parameters.toArray()
+        );
+    }
+
+    private void deleteSourceReports(List<Long> sourceReportIds) {
+        if (sourceReportIds.isEmpty()) {
+            return;
+        }
+
+        StringJoiner placeholders = new StringJoiner(", ");
+        List<Object> parameters = new ArrayList<>();
+        for (Long sourceReportId : sourceReportIds) {
+            placeholders.add("?");
+            parameters.add(sourceReportId);
+        }
+
+        jdbcTemplate.update(
+                "DELETE FROM llm_reports WHERE period_type = 'DAILY' AND id IN (" + placeholders + ")",
                 parameters.toArray()
         );
     }

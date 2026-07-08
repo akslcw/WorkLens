@@ -22,4 +22,9 @@ public class ReportGenerationScheduler {
     public void generateDailyReports() {
         reportGenerationService.generateDailyReports(LocalDate.now(clock));
     }
+
+    @Scheduled(cron = "${worklens.reports.weekly-cron:0 55 23 * * SUN}", zone = "${worklens.reports.zone:Asia/Hong_Kong}")
+    public void generateWeeklyReports() {
+        reportGenerationService.generateWeeklyReports(LocalDate.now(clock));
+    }
 }

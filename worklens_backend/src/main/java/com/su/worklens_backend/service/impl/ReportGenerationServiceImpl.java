@@ -1,12 +1,15 @@
 package com.su.worklens_backend.service.impl;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.su.worklens_backend.service.EmployeeDailyReportArchiveRequest;
+import com.su.worklens_backend.service.EmployeeWeeklyReportArchiveRequest;
 import com.su.worklens_backend.service.LlmProvider;
 import com.su.worklens_backend.service.ReportArchiveService;
 import com.su.worklens_backend.service.ReportGenerationService;
 import com.su.worklens_backend.service.TeamDailyReportArchiveRequest;
+import com.su.worklens_backend.service.TeamWeeklyReportArchiveRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -91,6 +94,30 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                     allSourceRecords.size()
             );
             reportArchiveService.archiveDailyReports(archiveRequests, teamReport);
+        }
+    }
+
+    @Override
+    public void generateWeeklyReports(LocalDate weekEndDate) {
+        LocalDate weekStartDate = weekEndDate.minusDays(6);
+        LocalDateTime periodStartedAt = weekStartDate.atStartOfDay();
+        LocalDateTime periodEndedAt = weekEndDate.plusDays(1).atStartOfDay();
+
+        List<EmployeeWeeklyReportArchiveRequest> employeeWeeklyReports = buildEmployeeWeeklyReports(
+                weekStartDate,
+                weekEndDate,
+                periodStartedAt,
+                periodEndedAt
+        );
+        TeamWeeklyReportArchiveRequest teamWeeklyReport = buildTeamWeeklyReport(
+                weekStartDate,
+                weekEndDate,
+                periodStartedAt,
+                periodEndedAt
+        );
+
+        if (!employeeWeeklyReports.isEmpty() || teamWeeklyReport != null) {
+            reportArchiveService.archiveWeeklyReports(employeeWeeklyReports, teamWeeklyReport);
         }
     }
 
@@ -249,9 +276,217 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         );
     }
 
+    private List<EmployeeWeeklyReportArchiveRequest> buildEmployeeWeeklyReports(
+            LocalDate weekStartDate,
+            LocalDate weekEndDate,
+            LocalDateTime periodStartedAt,
+            LocalDateTime periodEndedAt
+    ) {
+        List<Long> employeeIds = jdbcTemplate.queryForList(
+                """
+                        SELECT DISTINCT target_employee_id
+                        FROM llm_reports
+                        WHERE report_scope = 'EMPLOYEE'
+                          AND period_type = 'DAILY'
+                          AND period_start_date >= ?
+                          AND period_end_date <= ?
+                        ORDER BY target_employee_id
+                        """,
+                Long.class,
+                weekStartDate,
+                weekEndDate
+        );
+        List<EmployeeWeeklyReportArchiveRequest> requests = new ArrayList<>();
+        for (Long employeeId : employeeIds) {
+            List<SourceReportSnapshot> sourceReports = findSourceReports("EMPLOYEE", employeeId, weekStartDate, weekEndDate);
+            if (sourceReports.isEmpty()) {
+                continue;
+            }
+            List<ReportDetailItem> detailItems = buildDetailItemsFromReports(sourceReports);
+            String detailJson = toJson(detailItems);
+            String summary = llmProvider.generateText(buildEmployeeWeeklyPrompt(employeeId, weekStartDate, weekEndDate, detailItems));
+            requests.add(new EmployeeWeeklyReportArchiveRequest(
+                    employeeId,
+                    weekStartDate,
+                    weekEndDate,
+                    periodStartedAt,
+                    periodEndedAt,
+                    detailJson,
+                    summary,
+                    sourceReports.size(),
+                    sourceReports.stream().map(SourceReportSnapshot::id).toList()
+            ));
+        }
+        return requests;
+    }
+
+    private TeamWeeklyReportArchiveRequest buildTeamWeeklyReport(
+            LocalDate weekStartDate,
+            LocalDate weekEndDate,
+            LocalDateTime periodStartedAt,
+            LocalDateTime periodEndedAt
+    ) {
+        List<SourceReportSnapshot> sourceReports = findSourceReports("TEAM", null, weekStartDate, weekEndDate);
+        if (sourceReports.isEmpty()) {
+            return null;
+        }
+
+        List<ReportDetailItem> detailItems = buildDetailItemsFromReports(sourceReports);
+        String detailJson = toJson(detailItems);
+        String summary = llmProvider.generateText(buildTeamWeeklyPrompt(weekStartDate, weekEndDate, detailItems));
+        return new TeamWeeklyReportArchiveRequest(
+                weekStartDate,
+                weekEndDate,
+                periodStartedAt,
+                periodEndedAt,
+                detailJson,
+                summary,
+                sourceReports.size(),
+                sourceReports.stream().map(SourceReportSnapshot::id).toList()
+        );
+    }
+
+    private List<SourceReportSnapshot> findSourceReports(String reportScope, Long employeeId, LocalDate startDate, LocalDate endDate) {
+        if (employeeId == null) {
+            return jdbcTemplate.query(
+                    """
+                            SELECT id, detail_json::text AS detail_json
+                            FROM llm_reports
+                            WHERE report_scope = ?
+                              AND period_type = 'DAILY'
+                              AND target_employee_id IS NULL
+                              AND period_start_date >= ?
+                              AND period_end_date <= ?
+                            ORDER BY period_start_date, id
+                            """,
+                    (resultSet, rowNumber) -> new SourceReportSnapshot(
+                            resultSet.getLong("id"),
+                            resultSet.getString("detail_json")
+                    ),
+                    reportScope,
+                    startDate,
+                    endDate
+            );
+        }
+
+        return jdbcTemplate.query(
+                """
+                        SELECT id, detail_json::text AS detail_json
+                        FROM llm_reports
+                        WHERE report_scope = ?
+                          AND period_type = 'DAILY'
+                          AND target_employee_id = ?
+                          AND period_start_date >= ?
+                          AND period_end_date <= ?
+                        ORDER BY period_start_date, id
+                        """,
+                (resultSet, rowNumber) -> new SourceReportSnapshot(
+                        resultSet.getLong("id"),
+                        resultSet.getString("detail_json")
+                ),
+                reportScope,
+                employeeId,
+                startDate,
+                endDate
+        );
+    }
+
+    private List<ReportDetailItem> buildDetailItemsFromReports(List<SourceReportSnapshot> sourceReports) {
+        Map<String, Long> durationSecondsByApp = new LinkedHashMap<>();
+        for (SourceReportSnapshot sourceReport : sourceReports) {
+            for (ReportDetailSourceItem sourceItem : parseDetailItems(sourceReport.detailJson())) {
+                durationSecondsByApp.merge(sourceItem.appName(), sourceItem.durationSeconds(), Long::sum);
+            }
+        }
+        long totalDurationSeconds = durationSecondsByApp.values().stream()
+                .mapToLong(Long::longValue)
+                .sum();
+        return durationSecondsByApp.entrySet().stream()
+                .sorted(Map.Entry.<String, Long>comparingByValue(Comparator.reverseOrder())
+                        .thenComparing(Map.Entry.comparingByKey()))
+                .map(entry -> new ReportDetailItem(
+                        entry.getKey(),
+                        entry.getValue(),
+                        Math.round(entry.getValue() / 60.0),
+                        calculateRatio(entry.getValue(), totalDurationSeconds)
+                ))
+                .toList();
+    }
+
+    private List<ReportDetailSourceItem> parseDetailItems(String detailJson) {
+        try {
+            return objectMapper.readValue(detailJson, new TypeReference<>() {
+            });
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Failed to parse report detail JSON", exception);
+        }
+    }
+
+    private String buildEmployeeWeeklyPrompt(Long employeeId, LocalDate weekStartDate, LocalDate weekEndDate, List<ReportDetailItem> detailItems) {
+        String appSummary = detailItems.stream()
+                .map(item -> "%s | durationSeconds=%d | ratio=%s".formatted(
+                        item.appName(),
+                        item.durationSeconds(),
+                        item.ratio()
+                ))
+                .collect(Collectors.joining("\n"));
+        if (appSummary.isBlank()) {
+            appSummary = "No weekly app usage data is available.";
+        }
+
+        return """
+                You are writing an encouraging weekly personal productivity summary for a WorkLens employee.
+                Write the report in Chinese by default.
+                Keep the tone supportive, practical, and concise.
+                Return plain text only.
+                Do not use Markdown, bullet syntax, headings, bold markers, tables, or code fences.
+                Do not mention any other employees or team-level comparisons.
+
+                Employee id: %d
+                Reporting week: %s to %s
+
+                Structured app usage aggregated from daily reports:
+                %s
+                """.formatted(employeeId, weekStartDate, weekEndDate, appSummary);
+    }
+
+    private String buildTeamWeeklyPrompt(LocalDate weekStartDate, LocalDate weekEndDate, List<ReportDetailItem> detailItems) {
+        String appSummary = detailItems.stream()
+                .map(item -> "%s | durationSeconds=%d | ratio=%s".formatted(
+                        item.appName(),
+                        item.durationSeconds(),
+                        item.ratio()
+                ))
+                .collect(Collectors.joining("\n"));
+        if (appSummary.isBlank()) {
+            appSummary = "No aggregated weekly app usage data is available.";
+        }
+
+        return """
+                You are writing a concise weekly team usage briefing for a WorkLens manager.
+                Write the report in Chinese by default.
+                Return plain text only.
+                Do not use Markdown, bullet syntax, headings, bold markers, tables, or code fences.
+                Use only the aggregated metrics below.
+                Do not invent or infer any individual employee detail.
+                Do not mention names, employee identifiers, usernames, or raw activity records.
+
+                Reporting week: %s to %s
+
+                aggregatedAppUsageFromDailyReports:
+                %s
+                """.formatted(weekStartDate, weekEndDate, appSummary);
+    }
+
     private record UsageRecordSnapshot(Long id, String appName, LocalDateTime startedAt, LocalDateTime endedAt) {
     }
 
     private record ReportDetailItem(String appName, long durationSeconds, long durationMinutes, BigDecimal ratio) {
+    }
+
+    private record ReportDetailSourceItem(String appName, long durationSeconds, long durationMinutes, BigDecimal ratio) {
+    }
+
+    private record SourceReportSnapshot(Long id, String detailJson) {
     }
 }
