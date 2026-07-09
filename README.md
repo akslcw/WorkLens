@@ -1,81 +1,44 @@
 # WorkLens
 
-WorkLens 是一套面向团队的员工应用使用效率分析系统原型。
+WorkLens 是一个用于采集员工桌面应用使用情况、向员工展示个人使用视图、向管理者展示团队聚合视图，并自动生成日报/周报/月报的原型系统。
 
-核心权限边界：
-- 管理者默认只能看到团队聚合后的、去标识化的趋势数据，不能直接查看员工个人明细。
-- 员工本人只能看到自己的完整明细。
-- 如果管理者需要查看某个员工的个人明细，必须先走“申请 -> 员工本人审批 -> 一次性查看 -> 留痕审计”流程。
+## 技术栈
 
-当前仓库是单体应用，包含：
-- `worklens_backend`：Spring Boot + MyBatis-Plus + PostgreSQL
-- `worklens_frontend`：Vue 3 + TypeScript + Vite
-- `worklens_desktop_client`：Windows Python 桌面采集客户端
-- `compose.yml`：本地 PostgreSQL 开发环境
+- 后端：Java 17、Spring Boot 3、MyBatis-Plus、PostgreSQL
+- 前端：Vue 3、TypeScript、Vite、Vue Router、Vitest
+- 桌面客户端：Python、Windows 前台应用检测、系统托盘、本地 SQLite 重试缓存
+- 数据库：PostgreSQL 16，本地通过 Docker Compose 启动
+- LLM：后端通过 `LlmProvider` 接入 DeepSeek 兼容的 Chat Completion API
 
-## 当前完成度
-
-当前已完成到模块 22。
-
-已经实现的主链路：
-- 登录鉴权，所有业务接口都要求登录，不允许匿名访问
-- 员工档案 CRUD，仅管理者可访问；新增员工时会同步创建员工登录账号
-- 员工账号使用工号登录，统一初始密码为 `worklens123`，首次登录或被重置后必须先修改密码
-- 员工使用记录上报，记录归属强制以服务端解析出的 `employees.id` 为准
-- 双视角权限边界
-  - 员工只能查看自己的完整明细
-  - 管理者只能查看团队聚合数据
-- 审计授权流程
-  - 管理者可发起个人明细查看申请
-  - 只有目标员工本人可以批准或拒绝
-  - 批准后授权一次性有效，用后即失效
-  - 每次实际查看都会写入审计日志
-  - 员工本人可查看“谁申请过看我的数据、我怎么处理、对方是否已实际查看”
-- Windows 桌面采集客户端
-  - 员工账号登录后自动上报使用记录
-  - 每 5 秒采样一次当前前台应用进程名
-  - 5 分钟无键鼠操作视为 `Idle`
-  - `Idle` 单独记录，不跳过
-  - 每 5 分钟批量上报
-  - 上报失败写入本地 SQLite，恢复后自动补传
-  - 支持最小系统托盘运行方式
-- LLM 报告能力
-  - DeepSeek API 薄封装接入，不引入 Agent 叙事
-  - 员工可主动生成“最近一周”的个人鼓励性总结
-  - 管理者可生成仅基于团队聚合数据的团队简报
-  - 报告生成历史已落库，可查询
-  - LLM 调用超时或上游失败时会返回清晰错误，不是空白 500
-
-## 目录结构
+## 项目结构
 
 ```text
-worklens/
-|-- compose.yml
-|-- .env.example
-|-- worklens_backend/
-|-- worklens_frontend/
-`-- worklens_desktop_client/
+.
+|-- compose.yml                     # 本地 PostgreSQL 服务
+|-- .env.example                    # 本地数据库环境变量示例
+|-- docs/                           # 设计说明和阶段记录
+|-- worklens_backend/               # Spring Boot API、报告生成、数据库 schema
+|-- worklens_frontend/              # 员工和管理者使用的 Vue Web 应用
+`-- worklens_desktop_client/        # Windows 桌面采集和同步客户端
 ```
 
-## 启动方式
+## 本地启动
 
 ### 1. 启动 PostgreSQL
 
-仓库根目录提供了示例环境变量文件 [`.env.example`](./.env.example)。
-
-最简单的启动方式：
+在仓库根目录执行：
 
 ```powershell
 docker compose --env-file .env.example -f compose.yml up -d
 ```
 
-确认容器状态：
+查看容器状态：
 
 ```powershell
 docker ps
 ```
 
-如果你本机之前跑过旧的数据库卷，且口令与当前 `.env.example` 不一致，可重建卷：
+如果需要重建本地数据库卷：
 
 ```powershell
 docker compose -f compose.yml down -v
@@ -84,7 +47,7 @@ docker compose --env-file .env.example -f compose.yml up -d
 
 ### 2. 启动后端
 
-后端数据库连接信息通过环境变量读取。
+在启动 Spring Boot 的同一个 shell 中设置数据库环境变量：
 
 ```powershell
 cd worklens_backend
@@ -96,10 +59,20 @@ $env:WORKLENS_DB_PASSWORD='change-me'
 .\mvnw.cmd spring-boot:run
 ```
 
+可选 LLM 配置：
+
+```powershell
+$env:WORKLENS_DEEPSEEK_API_KEY='your-deepseek-api-key'
+$env:WORKLENS_DEEPSEEK_BASE_URL='https://api.deepseek.com'
+$env:WORKLENS_DEEPSEEK_MODEL='deepseek-v4-flash'
+$env:WORKLENS_DEEPSEEK_CONNECT_TIMEOUT='5s'
+$env:WORKLENS_DEEPSEEK_READ_TIMEOUT='15s'
+```
+
 健康检查：
 
 ```text
-http://localhost:8080/health
+GET http://localhost:8080/health
 ```
 
 预期返回：
@@ -107,6 +80,8 @@ http://localhost:8080/health
 ```text
 ok
 ```
+
+后端启动时会执行 `schema.sql`，自动创建或补齐所需表结构。
 
 ### 3. 启动前端
 
@@ -122,30 +97,14 @@ npm run dev
 http://localhost:5173
 ```
 
-### 4. 启动桌面采集客户端
+Vite 开发服务器会把 `/api/*` 代理到 `http://127.0.0.1:8080`。
 
-先安装依赖：
+### 4. 启动桌面客户端
+
+安装 Python 依赖：
 
 ```powershell
 python -m pip install -r worklens_desktop_client/requirements.txt
-```
-
-手动登录并上报一条记录：
-
-```powershell
-python -m worklens_desktop_client.manual_report --base-url http://localhost:8080
-```
-
-只做本地采集并输出合并结果：
-
-```powershell
-python -m worklens_desktop_client.collect_activity
-```
-
-持续采集并按周期自动上报：
-
-```powershell
-python -m worklens_desktop_client.run_sync_client --base-url http://localhost:8080
 ```
 
 以系统托盘方式运行：
@@ -154,85 +113,161 @@ python -m worklens_desktop_client.run_sync_client --base-url http://localhost:80
 pythonw -m worklens_desktop_client.tray_app
 ```
 
-## 桌面客户端使用顺序（重要）
-
-员工拿到初始账号后，必须先在网页端登录并完成首次修改密码，然后再启动桌面采集客户端。
-
-原因：新员工账号和被管理员重置密码后的账号都会处于 `mustChangePassword=true` 状态。这个状态下 `/auth/login` 可以成功，但后端会拒绝 `/usage-records` 等业务接口。桌面客户端会保留本地 SQLite 缓存，不会丢数据，但日志会提示：
-
-```text
-Upload blocked: current account must change password in the web app before desktop uploads can continue.
-```
-
-正确顺序：
-
-```text
-1. 管理员创建员工账号或重置密码
-2. 员工打开网页端，用工号和初始密码 worklens123 登录
-3. 员工按页面提示修改密码
-4. 员工再启动桌面采集客户端
-```
-
-如果顺序反过来，桌面客户端会持续采集并缓存数据，但在改密完成前无法成功上报。
-
-## LLM 配置
-
-LLM 报告能力使用 DeepSeek API，API Key 不写入仓库，必须通过环境变量提供。
-
-启动后端前可按需设置：
+在控制台中持续采集并同步：
 
 ```powershell
-$env:WORKLENS_DEEPSEEK_API_KEY='your-deepseek-api-key'
+python -m worklens_desktop_client.run_sync_client --base-url http://localhost:8080
 ```
 
-可选配置项：
+手动上传一条验证记录：
 
 ```powershell
-$env:WORKLENS_DEEPSEEK_BASE_URL='https://api.deepseek.com'
-$env:WORKLENS_DEEPSEEK_MODEL='deepseek-v4-flash'
-$env:WORKLENS_DEEPSEEK_CONNECT_TIMEOUT='5s'
-$env:WORKLENS_DEEPSEEK_READ_TIMEOUT='15s'
+python -m worklens_desktop_client.manual_report --base-url http://localhost:8080
 ```
 
-## 当前关键参数
+只在本地采集并输出合并结果，不上传：
 
-桌面客户端默认策略：
-- 采样频率：每 `5` 秒检测一次当前前台应用
-- 采集内容：只采集应用名/进程名，不采集窗口标题，不做域名级追踪
-- 空闲判定：连续 `5` 分钟无键鼠操作视为 `Idle`
-- 空闲处理：空闲时间单独记为 `Idle`
-- 上报周期：每 `5` 分钟批量上报一次
-- 失败重试：失败写入本地 SQLite，恢复后自动补传
-- 上报阻塞提示：如果后端返回 `Password change required`，本地缓存保留，日志明确提示员工先到网页端完成改密
+```powershell
+python -m worklens_desktop_client.collect_activity
+```
 
-使用记录展示与合并：
-- 后端写入 `/usage-records` 时，会检查该员工最近一条记录；如果应用名相同，且上一条结束时间与新记录开始时间间隔在 `15` 秒内，则更新上一条记录的结束时间，不再插入新行
-- 员工端个人明细页默认展示 `20` 条记录，点击 `Load more` 继续加载，避免列表无限增长
+## 核心功能
 
-后端 LLM 默认策略：
-- 员工报告时间范围：最近一周
-- 员工报告生成方式：员工主动点击生成
-- 团队报告输入：只允许团队聚合数据，绝不把个人明细传给 LLM
-- 报告历史策略：同一时间段重复生成时，保留多份历史记录，不覆盖旧报告
+### 登录与账号体系
 
-员工账号默认策略：
-- 登录账号：使用员工工号，不使用姓名
-- 初始密码：统一为 `worklens123`
-- 强制改密：新员工首次登录、管理员重置密码后再次登录，都必须先修改密码
-- 管理者重置：管理者可在员工档案页将员工密码重置为统一初始密码
+- 员工使用员工工号登录。
+- 新员工和被重置密码的员工使用统一初始密码 `worklens123`。
+- 新账号或重置后的账号会被标记为 `mustChangePassword=true`。
+- `mustChangePassword=true` 的账号可以登录，但在 Web 端改密前不能访问业务 API。
+- 员工新设置的密码只会在员工本人改密成功页短暂显示一次，管理者界面不会展示员工的新密码。
+- 管理者重置员工密码后，只展示统一初始临时密码。
 
-## 主要接口能力
+### 员工视角
 
-### 认证与基础权限
+员工只能查看自己的数据。
+
+“我的使用明细”页面有两种展示模式：
+
+- 当天尚未生成日报前，展示实时应用卡片。每张卡片按应用名聚合，展示累计时长，并可展开查看使用时间段。
+- 历史日期展示覆盖该日期的报告。随着滚动清理推进，可能展示日报、周报或月报。
+
+实时卡片视图规则：
+
+- 按应用聚合；
+- 所有使用片段都计入累计值；
+- 写入记录时沿用 15 秒合并规则；
+- 每页最多展示 10 个应用卡片。
+
+### 管理者视角
+
+管理者默认只能查看团队聚合数据。
+
+团队报告和团队摘要不得暴露个体明细。团队报告的 `detail_json` 只包含：
+
+- 应用名；
+- 周期内累计时长；
+- 周期内占比。
+
+团队报告不得包含员工姓名、员工工号、用户名、原始记录 ID、单条记录开始/结束时间，或任何按员工拆分的行。
+
+### 审计授权流程
+
+管理者不能直接浏览员工个人明细。
+
+授权流程：
+
+1. 管理者提交明细查看申请并填写原因。
+2. 目标员工查看申请。
+3. 员工批准或拒绝申请。
+4. 批准后，管理者获得一次性查看权限。
+5. 管理者实际查看时写入审计日志。
+6. 授权使用后立即失效。
+
+审计授权后的页面也遵循同一展示规则：
+
+- 当天尚未归档：实时应用卡片；
+- 历史日期：覆盖该日期的日报、周报或月报。
+
+### 桌面采集客户端
+
+Windows 桌面客户端当前行为：
+
+- 每 5 秒采样一次当前前台进程；
+- 只采集应用名或进程名；
+- 不采集窗口标题；
+- 不采集浏览器 URL 或域名；
+- 连续 5 分钟没有键鼠输入时记为 `Idle`；
+- `Idle` 作为独立应用桶记录；
+- 每 5 分钟批量上传；
+- 上传失败时写入本地 SQLite，恢复后自动重试；
+- 托盘状态显示运行中/已停止，并显示当前登录用户姓名。
+
+员工应先在 Web 端完成首次登录和改密，再启动桌面客户端。如果后端返回需要改密，桌面客户端会保留本地缓存，并在日志中提示必须先到 Web 端完成改密。
+
+## 自动报告体系
+
+报告由系统自动生成，员工和管理者不再点击按钮生成报告。
+
+### 日报
+
+- 生成时间：每天 `23:55`，时区 `Asia/Hong_Kong`。
+- 来源数据：当天的 `usage_records`。
+- 生成内容：员工日报和团队日报。
+- 清理规则：报告插入成功后，删除对应原始 `usage_records`。
+
+### 周报
+
+- 生成时间：每周日 `23:55`，时区 `Asia/Hong_Kong`。
+- 周期：自然周，周一到周日。
+- 来源数据：该周日报。
+- 生成内容：员工周报和团队周报。
+- 清理规则：报告插入成功后，删除对应日报。
+
+### 月报
+
+- 生成时间：每月最后一天 `23:55`，时区 `Asia/Hong_Kong`。
+- 来源数据：当月内已经生成的周报。
+- 生成内容：员工月报和团队月报。
+- 清理规则：报告插入成功后，删除对应周报。
+
+月报采用严格层级汇总：月报只汇总已经生成的周报，不回查原始 `usage_records`，也不从日报补齐缺口。因此，当周报边界和自然月边界不完全一致时，月报覆盖范围可能和自然月有少量出入。
+
+### 报告内容
+
+每份报告保存：
+
+- 结构化 `detail_json`：应用名、累计秒数、累计分钟数、占比；
+- LLM 生成的自然语言总结；
+- 报告范围：`EMPLOYEE` 或 `TEAM`；
+- 报告周期：`DAILY`、`WEEKLY` 或 `MONTHLY`；
+- 周期开始/结束日期；
+- 来源层级和来源数量。
+
+LLM 调用发生在数据库事务之外。短事务只负责插入报告并删除来源数据。如果 LLM 生成失败，不删除来源数据，也不插入半成品报告。
+
+### 手动生成入口
+
+旧手动生成接口仅作为兼容路由保留：
+
+- `POST /llm/employee-report`
+- `POST /llm/team-report`
+
+这两个接口仍执行认证和角色校验，但认证通过的用户会收到 `410 Gone`，错误码为 `MANUAL_REPORT_GENERATION_DISABLED`。
+
+## API 概览
+
+除特别说明外，业务 API 都需要有效 token。
+
+### Auth
 
 - `POST /auth/login`
 - `GET /auth/me`
+- `POST /auth/change-password`
 - `GET /health`
 
-说明：
-- 所有业务接口都要求有效 token
+### Employees
 
-### 员工管理
+仅管理者可访问：
 
 - `POST /employees`
 - `GET /employees`
@@ -240,62 +275,35 @@ $env:WORKLENS_DEEPSEEK_READ_TIMEOUT='15s'
 - `PUT /employees/{id}`
 - `DELETE /employees/{id}`
 - `POST /employees/{id}/reset-password`
-- `POST /auth/change-password`
 
-说明：
-- `/employees` 全部增删查改仅允许管理者访问
-- 新增员工会同步创建 `auth_users` 记录，`username` 等于员工工号，角色固定为 `EMPLOYEE`
-- `POST /employees/{id}/reset-password` 仅管理者可调用，会把员工密码重置为 `worklens123` 并要求下次登录先改密
-- `POST /auth/change-password` 用于完成强制改密，改密前的账号不能访问其他业务页面
+新增员工时会同步创建登录账号，账号名等于员工工号。
 
-### 使用记录与双视角查询
+### Usage
 
-- `POST /usage-records`
-- `GET /usage-records`
-- `GET /team-usage-summary`
+- `POST /usage-records`：员工上传使用记录。服务端从 token 解析员工身份，不信任客户端传入的员工 ID。
+- `GET /usage-records`：员工查看自己的原始记录列表。
+- `GET /usage-records/view?date=YYYY-MM-DD&page=1&pageSize=10`：员工使用视图，返回实时卡片或覆盖报告。
+- `GET /team-usage-summary`：管理者查看团队聚合摘要。
 
-说明：
-- `POST /usage-records` 仅允许员工上报，且不接受客户端传 `employeeId`
-- `GET /usage-records` 仅返回当前登录员工自己的明细
-- `GET /team-usage-summary` 仅返回聚合统计，不返回任何个人明细
-
-### 审计授权流程
+### Audit Requests
 
 - `POST /detail-access-requests`
 - `GET /detail-access-requests`
+- `GET /detail-access-requests/targeting-me`
 - `PATCH /detail-access-requests/{id}/decision`
 - `GET /detail-access-requests/{id}/usage-records`
+- `GET /detail-access-requests/{id}/usage-view?date=YYYY-MM-DD&page=1&pageSize=10`
 - `GET /detail-access-requests/{id}/access-logs`
-- `GET /detail-access-requests/targeting-me`
 
-说明：
-- 管理者可发起明细查看申请
-- 只有目标员工本人可以审批
-- 授权一次性有效，用后即失效
-- 员工可查看指向自己的申请及后续实际查看情况
+### LLM and Report History
 
-### LLM 报告
+- `GET /llm/test-response`：检查 DeepSeek 兼容 LLM 链路。
+- `GET /llm/employee-report-history`：当前员工的报告历史。
+- `GET /llm/team-report-history`：当前管理者可见的团队报告历史。
+- `POST /llm/employee-report`：已禁用的手动生成兼容入口。
+- `POST /llm/team-report`：已禁用的手动生成兼容入口。
 
-- `GET /llm/test-response`
-- `POST /llm/employee-report`
-- `GET /llm/employee-report-history`
-- `POST /llm/team-report`
-- `GET /llm/team-report-history`
-
-说明：
-- `GET /llm/test-response` 仅用于验证 DeepSeek 调用链路是否可用
-- `POST /llm/employee-report` 保留为兼容入口，认证和角色校验仍生效，但手动生成已禁用，已认证员工调用会返回 `410 Gone`
-- `GET /llm/employee-report-history` 仅 `EMPLOYEE` 可调用，只能看自己的报告历史
-- `POST /llm/team-report` 保留为兼容入口，认证和角色校验仍生效，但手动生成已禁用，已认证管理者调用会返回 `410 Gone`
-- `GET /llm/team-report-history` 仅 `MANAGER` 可调用，只能看自己生成过的团队报告历史
-
-### LLM 失败处理
-
-当 DeepSeek 调用失败时：
-- 超时返回 `504 Gateway Timeout`
-- 上游报错或调用失败返回 `502 Bad Gateway`
-
-返回示例：
+LLM 失败会返回明确错误：
 
 ```json
 {
@@ -311,43 +319,25 @@ $env:WORKLENS_DEEPSEEK_READ_TIMEOUT='15s'
 }
 ```
 
-## 当前使用说明
-
-当前仓库仍是 MVP/原型状态，还没有做：
-- 注册页面
-- 初始化种子数据脚本
-- 生产级部署和监控
-- 真实组织架构、多级审批、报表前端页面美化
-
-这意味着：
-- 数据库表会在后端启动时自动初始化
-- 测试账号、员工档案和使用记录需要自行准备
-- 集成测试代码本身就是当前最完整的接口行为样例
-
-## 已知限制
-
-团队聚合接口虽然不返回个人明细，但在团队人数很少时，聚合结果在数学上可能接近个体明细。
-
-例如：
-- 团队只有 1 人时，聚合值本质上就等于该员工个人数据
-- 团队只有 2 到 3 人时，也可能通过上下文推断出个体情况
-
-当前版本没有做这类保护：
-- 最小分组人数门槛
-- 小样本隐藏
-- 更严格的匿名化/去标识化策略
-
-这是当前版本明确保留的已知限制，本轮不处理。
-
-员工账号初始密码也有一个已知取舍：所有新员工和被重置密码的员工都会短暂共享统一初始密码 `worklens123`。系统会强制这些账号登录后立即修改密码，但在员工完成修改前，理论上存在被他人冒用初始密码登录的窗口期风险。这是当前版本为降低演示和管理复杂度接受的限制。
-
-## 常用验证命令
+## 验证命令
 
 后端测试：
 
 ```powershell
 cd worklens_backend
+$env:WORKLENS_DB_HOST='127.0.0.1'
+$env:WORKLENS_DB_PORT='5432'
+$env:WORKLENS_DB_NAME='worklens'
+$env:WORKLENS_DB_USERNAME='worklens'
+$env:WORKLENS_DB_PASSWORD='change-me'
 .\mvnw.cmd test
+```
+
+前端测试：
+
+```powershell
+cd worklens_frontend
+npm test
 ```
 
 前端构建：
@@ -360,8 +350,13 @@ npm run build
 桌面客户端测试：
 
 ```powershell
-python -m unittest worklens_desktop_client.tests.test_api_client
-python -m unittest worklens_desktop_client.tests.test_activity_tracker
-python -m unittest worklens_desktop_client.tests.test_sync_service
-python -m unittest worklens_desktop_client.tests.test_background_runner
+python -m unittest discover worklens_desktop_client/tests
 ```
+
+## 已知限制
+
+- 团队人数过少时，团队聚合数据在数学上可能接近个体明细。当前版本没有实现最小团队人数门槛、小样本隐藏或更强匿名化。
+- 桌面客户端只采集应用名或进程名，不采集窗口标题、浏览器 URL 或域名。
+- 月报采用严格层级汇总，只汇总已生成周报。周报边界和自然月边界不完全一致时，月报覆盖范围可能和自然月有少量出入。
+- 所有新员工和被重置密码的员工会短暂共享统一初始密码 `worklens123`。系统会强制登录后改密，但员工完成改密前存在短暂窗口期风险。
+- 当前系统仍是原型，没有包含生产部署加固、组织层级、多级审批或运行监控。
