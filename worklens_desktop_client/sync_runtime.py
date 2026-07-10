@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from worklens_desktop_client.activity_tracker import ActivityTracker
+from worklens_desktop_client.api_client import LoginError
+from worklens_desktop_client.api_client import LoginResult
 from worklens_desktop_client.api_client import WorkLensApiClient
 from worklens_desktop_client.local_store import LocalRecordStore
 from worklens_desktop_client.sync_service import SyncService
@@ -27,16 +29,28 @@ class SyncRuntime:
         self._logger = logger or (lambda message: print(message))
         self._on_login = on_login or (lambda login_result: None)
 
-    def run(self, username: str, password: str, stop_event: threading.Event, duration_seconds: int | None = None) -> None:
+    def login(self, username: str, password: str) -> LoginResult:
+        login_result = WorkLensApiClient(self._config.base_url).login(username, password)
+        self._validate_login_result(login_result)
+        return login_result
+
+    def run(
+        self,
+        username: str,
+        password: str,
+        stop_event: threading.Event,
+        duration_seconds: int | None = None,
+        login_result: LoginResult | None = None,
+    ) -> None:
         client = WorkLensApiClient(self._config.base_url)
         tracker = ActivityTracker()
         probe = Win32ActivityProbe(idle_threshold_seconds=self._config.idle_threshold_seconds)
         store = LocalRecordStore(self._config.cache_db)
         sync_service = SyncService(client, store)
 
-        login_result = client.login(username, password)
-        if login_result.role != "EMPLOYEE":
-            raise SystemExit("Only EMPLOYEE accounts can run the desktop collector.")
+        if login_result is None:
+            login_result = client.login(username, password)
+        self._validate_login_result(login_result)
 
         self._on_login(login_result)
         self._logger(f"Login succeeded for {login_result.username} ({login_result.role}).")
@@ -95,3 +109,10 @@ class SyncRuntime:
                 "Upload blocked: current account must change password in the web app before desktop uploads can continue. "
                 "Records remain cached locally and will retry after the password is changed."
             )
+
+    @staticmethod
+    def _validate_login_result(login_result: LoginResult) -> None:
+        if login_result.must_change_password:
+            raise LoginError("该账号必须先在网页端修改密码，然后才能启动桌面采集。")
+        if login_result.role != "EMPLOYEE":
+            raise LoginError("只有员工账号可以运行桌面采集客户端。")

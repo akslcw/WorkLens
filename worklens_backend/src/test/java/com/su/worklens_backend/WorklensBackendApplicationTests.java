@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -41,8 +42,24 @@ class WorklensBackendApplicationTests extends PostgresIntegrationTestSupport {
             jdbcTemplate.execute("TRUNCATE TABLE employees RESTART IDENTITY CASCADE");
             jdbcTemplate.execute("TRUNCATE TABLE auth_tokens RESTART IDENTITY CASCADE");
             jdbcTemplate.execute("TRUNCATE TABLE auth_users RESTART IDENTITY CASCADE");
+            jdbcTemplate.execute("TRUNCATE TABLE auth_login_attempts");
         } catch (Exception ignored) {
         }
+    }
+
+    @Test
+    void loginAttemptSchemaExists() {
+        Integer tableCount = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = 'auth_login_attempts'
+                """,
+                Integer.class
+        );
+
+        assertThat(tableCount).isEqualTo(1);
     }
 
     @Test
@@ -116,7 +133,92 @@ class WorklensBackendApplicationTests extends PostgresIntegrationTestSupport {
                                   \"password\": \"wrong-password\"
                                 }
                                 """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"))
+                .andExpect(jsonPath("$.message").value("Invalid username or password"));
+    }
+
+    @Test
+    void loginRejectsUnknownUsernameWithSamePublicError() throws Exception {
+        login("missing-user", "wrong-password")
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("INVALID_CREDENTIALS"))
+                .andExpect(jsonPath("$.message").value("Invalid username or password"));
+    }
+
+    @Test
+    void loginLocksUsernameAfterFiveConsecutiveFailures() throws Exception {
+        insertUser("manager", PASSWORD_HASH, "MANAGER", "M001", "Manager User");
+
+        for (int attempt = 1; attempt < 5; attempt++) {
+            login("manager", "wrong-password-" + attempt)
+                    .andExpect(status().isUnauthorized());
+        }
+
+        login("manager", "wrong-password-5")
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("LOGIN_LOCKED"))
+                .andExpect(jsonPath("$.message").value("Too many failed login attempts. Try again in 15 minutes."));
+    }
+
+    @Test
+    void successfulLoginClearsPreviousFailures() throws Exception {
+        insertUser("manager", PASSWORD_HASH, "MANAGER", "M001", "Manager User");
+
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            login("manager", "wrong-password-" + attempt)
+                    .andExpect(status().isUnauthorized());
+        }
+        Integer failuresBeforeSuccess = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(failed_attempts), 0) FROM auth_login_attempts WHERE username = ?",
+                Integer.class,
+                "manager"
+        );
+        assertThat(failuresBeforeSuccess).isEqualTo(3);
+
+        login("manager", PASSWORD).andExpect(status().isOk());
+
+        Integer rowsAfterSuccess = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM auth_login_attempts WHERE username = ?",
+                Integer.class,
+                "manager"
+        );
+        assertThat(rowsAfterSuccess).isZero();
+    }
+
+    @Test
+    void expiredLoginLockAllowsAuthenticationAndClearsAttemptState() throws Exception {
+        insertUser("manager", PASSWORD_HASH, "MANAGER", "M001", "Manager User");
+        jdbcTemplate.update(
+                """
+                INSERT INTO auth_login_attempts (username, failed_attempts, locked_until, updated_at)
+                VALUES (?, 5, CURRENT_TIMESTAMP - INTERVAL '1 minute', CURRENT_TIMESTAMP)
+                """,
+                "manager"
+        );
+
+        login("manager", PASSWORD).andExpect(status().isOk());
+
+        Integer remainingRows = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM auth_login_attempts WHERE username = ?",
+                Integer.class,
+                "manager"
+        );
+        assertThat(remainingRows).isZero();
+    }
+
+    @Test
+    void newestLoginInvalidatesPreviousToken() throws Exception {
+        insertUser("manager", PASSWORD_HASH, "MANAGER", "M001", "Manager User");
+        String firstToken = loginAndReadToken("manager", PASSWORD);
+        String secondToken = loginAndReadToken("manager", PASSWORD);
+
+        mockMvc.perform(get("/auth/me")
+                        .header("Authorization", "Bearer " + firstToken))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(get("/auth/me")
+                        .header("Authorization", "Bearer " + secondToken))
+                .andExpect(status().isOk());
     }
 
     @Test

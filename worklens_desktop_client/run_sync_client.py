@@ -4,6 +4,7 @@ import argparse
 import getpass
 from pathlib import Path
 
+from worklens_desktop_client.api_client import LoginError
 from worklens_desktop_client.sync_runtime import SyncRuntime
 from worklens_desktop_client.sync_runtime import SyncRuntimeConfig
 
@@ -72,6 +73,8 @@ def main() -> None:
         )
     except KeyboardInterrupt:
         print("Stopping sync client.")
+    except LoginError as error:
+        print(f"Login failed: {error}")
 
 
 if __name__ == "__main__":

@@ -37,6 +37,13 @@ ALTER TABLE auth_users
     ADD CONSTRAINT auth_users_employee_id_fkey
     FOREIGN KEY (employee_id) REFERENCES employees(id);
 
+CREATE TABLE IF NOT EXISTS auth_login_attempts (
+    username VARCHAR(100) PRIMARY KEY,
+    failed_attempts INTEGER NOT NULL DEFAULT 0 CHECK (failed_attempts >= 0),
+    locked_until TIMESTAMP NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS auth_tokens (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,

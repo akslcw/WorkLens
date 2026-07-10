@@ -2,10 +2,84 @@ import unittest
 from datetime import datetime
 from unittest.mock import Mock
 
+import requests
+
+from worklens_desktop_client import api_client
 from worklens_desktop_client.api_client import WorkLensApiClient
 
 
+LoginError = getattr(api_client, "LoginError", Exception)
+
+
 class WorkLensApiClientTests(unittest.TestCase):
+
+    def test_login_reports_invalid_credentials_for_unauthorized_response(self) -> None:
+        session = Mock()
+        session.post.return_value = self._json_response(
+            401,
+            {"code": "INVALID_CREDENTIALS", "message": "Invalid username or password"},
+        )
+        client = WorkLensApiClient("http://localhost:8080", session=session)
+
+        with self.assertRaisesRegex(LoginError, "用户名或密码错误，请重新输入"):
+            client.login("missing-user", "wrong-password")
+
+    def test_login_reports_temporary_lockout_for_too_many_attempts(self) -> None:
+        session = Mock()
+        session.post.return_value = self._json_response(
+            429,
+            {"code": "LOGIN_LOCKED", "message": "Too many failed login attempts"},
+        )
+        client = WorkLensApiClient("http://localhost:8080", session=session)
+
+        with self.assertRaisesRegex(LoginError, "登录尝试次数过多，请在 15 分钟后重试"):
+            client.login("employee.alice", "wrong-password")
+
+    def test_login_reports_server_unavailable_for_connection_failure(self) -> None:
+        session = Mock()
+        session.post.side_effect = requests.ConnectionError("connection refused")
+        client = WorkLensApiClient("http://localhost:8080", session=session)
+
+        with self.assertRaisesRegex(LoginError, "无法连接 WorkLens 服务器"):
+            client.login("employee.alice", "Password123!")
+
+    def test_login_rejects_success_response_without_token(self) -> None:
+        session = Mock()
+        session.post.return_value = self._json_response(
+            200,
+            {
+                "username": "employee.alice",
+                "displayName": "Alice Chen",
+                "role": "EMPLOYEE",
+                "mustChangePassword": False,
+            },
+        )
+        client = WorkLensApiClient("http://localhost:8080", session=session)
+
+        with self.assertRaisesRegex(LoginError, "登录响应中没有有效 token"):
+            client.login("employee.alice", "Password123!")
+
+    def test_login_preserves_password_change_requirement(self) -> None:
+        session = Mock()
+        session.post.return_value = self._json_response(
+            200,
+            {
+                "token": "abc123",
+                "username": "employee.alice",
+                "displayName": "Alice Chen",
+                "role": "EMPLOYEE",
+                "mustChangePassword": True,
+            },
+        )
+        client = WorkLensApiClient("http://localhost:8080", session=session)
+
+        login_result = client.login("employee.alice", "Password123!")
+
+        self.assertTrue(
+            hasattr(login_result, "must_change_password"),
+            "LoginResult must preserve mustChangePassword",
+        )
+        self.assertTrue(login_result.must_change_password)
 
     def test_login_posts_credentials_and_returns_token(self) -> None:
         session = Mock()
@@ -86,6 +160,17 @@ class WorkLensApiClientTests(unittest.TestCase):
             timeout=10,
         )
         response.raise_for_status.assert_called_once()
+
+    @staticmethod
+    def _json_response(status_code: int, payload: dict) -> requests.Response:
+        import json
+
+        response = requests.Response()
+        response.status_code = status_code
+        response.url = "http://localhost:8080/auth/login"
+        response.headers["Content-Type"] = "application/json"
+        response._content = json.dumps(payload).encode("utf-8")
+        return response
 
 
 if __name__ == "__main__":

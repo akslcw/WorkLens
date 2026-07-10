@@ -3,13 +3,14 @@ from __future__ import annotations
 import argparse
 import threading
 from pathlib import Path
-from tkinter import Tk, simpledialog
+from tkinter import Tk, messagebox, simpledialog
 
 import pystray
 from PIL import Image
 from PIL import ImageDraw
 
 from worklens_desktop_client.background_runner import BackgroundRunner
+from worklens_desktop_client.api_client import LoginError
 from worklens_desktop_client.sync_runtime import SyncRuntime
 from worklens_desktop_client.sync_runtime import SyncRuntimeConfig
 from worklens_desktop_client.tray_status import format_status_menu_text
@@ -57,6 +58,15 @@ def prompt_credentials(initial_username: str | None, initial_password: str | Non
     return username.strip(), password
 
 
+def show_login_error(message: str) -> None:
+    root = Tk()
+    root.withdraw()
+    try:
+        messagebox.showerror("WorkLens 登录失败", message, parent=root)
+    finally:
+        root.destroy()
+
+
 def main() -> None:
     args = parse_args()
     username, password = prompt_credentials(args.username, args.password)
@@ -88,12 +98,25 @@ def main() -> None:
         on_login=update_login_user,
     )
 
+    try:
+        login_result = runtime.login(username, password)
+    except LoginError as error:
+        show_login_error(str(error))
+        return
+
+    display_name_holder["value"] = login_result.display_name
+
     def update_status(status: str) -> None:
         status_holder["value"] = status
         refresh_icon()
 
     def worker(stop_event: threading.Event) -> None:
-        runtime.run(username=username, password=password, stop_event=stop_event)
+        runtime.run(
+            username=username,
+            password=password,
+            stop_event=stop_event,
+            login_result=login_result,
+        )
 
     runner = BackgroundRunner(worker=worker, on_status_change=update_status)
 
