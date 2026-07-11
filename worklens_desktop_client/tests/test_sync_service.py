@@ -42,6 +42,29 @@ class PasswordChangeRequiredApiClient:
 
 class SyncServiceTests(unittest.TestCase):
 
+    def test_failure_classification_reports_common_network_and_http_errors(self) -> None:
+        service = SyncService(object(), object())
+
+        self.assertEqual(
+            ("NETWORK_ERROR", "Unable to reach the WorkLens server."),
+            service._classify_failure(requests.ConnectionError("network down")),
+        )
+        expected_codes = {
+            401: "AUTHENTICATION_FAILED",
+            429: "RATE_LIMITED",
+            500: "SERVER_ERROR",
+            503: "SERVER_ERROR",
+        }
+        for status_code, expected_code in expected_codes.items():
+            with self.subTest(status_code=status_code):
+                response = requests.Response()
+                response.status_code = status_code
+                response._content = b""
+                error = requests.HTTPError(response=response)
+                code, message = service._classify_failure(error)
+                self.assertEqual(expected_code, code)
+                self.assertTrue(message)
+
     def test_failed_upload_caches_new_records(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             store = LocalRecordStore(str(Path(temp_dir) / "cache.sqlite3"))

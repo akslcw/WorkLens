@@ -76,7 +76,9 @@ class SyncService:
     def _classify_failure(self, error: requests.RequestException) -> tuple[str | None, str | None]:
         response = getattr(error, "response", None)
         if response is None:
-            return None, None
+            if isinstance(error, requests.Timeout):
+                return "NETWORK_TIMEOUT", "The WorkLens server request timed out."
+            return "NETWORK_ERROR", "Unable to reach the WorkLens server."
 
         response_text = response.text or ""
         if response.status_code == 403 and "Password change required" in response_text:
@@ -84,4 +86,10 @@ class SyncService:
                 "PASSWORD_CHANGE_REQUIRED",
                 "Current account must change password in the web app before desktop uploads can continue.",
             )
-        return None, None
+        if response.status_code == 401:
+            return "AUTHENTICATION_FAILED", "The WorkLens login session is invalid or expired."
+        if response.status_code == 429:
+            return "RATE_LIMITED", "The WorkLens server is busy. Uploads will retry later."
+        if response.status_code >= 500:
+            return "SERVER_ERROR", "The WorkLens server is temporarily unavailable."
+        return "UPLOAD_REJECTED", f"The WorkLens server rejected the upload (HTTP {response.status_code})."

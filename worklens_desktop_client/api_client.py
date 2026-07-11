@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -17,6 +18,10 @@ class LoginResult:
 
 class WorkLensApiClient:
     def __init__(self, base_url: str, session: requests.Session | None = None) -> None:
+        parsed_url = urlparse(base_url)
+        local_hosts = {"localhost", "127.0.0.1", "::1"}
+        if parsed_url.scheme == "http" and parsed_url.hostname not in local_hosts:
+            raise ValueError("HTTPS is required when connecting to a non-local WorkLens server.")
         self._base_url = base_url.rstrip("/")
         self._session = session or requests.Session()
 

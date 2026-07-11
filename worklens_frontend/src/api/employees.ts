@@ -1,4 +1,4 @@
-import { request } from './http'
+import { request, requestVoid } from './http'
 
 export type Employee = {
   id: number
@@ -18,19 +18,24 @@ export type ResetEmployeePasswordResponse = {
   mustChangePassword: boolean
 }
 
+export type CreateEmployeeResponse = Employee & Pick<
+  ResetEmployeePasswordResponse,
+  'initialPassword' | 'mustChangePassword'
+>
+
 export async function getEmployees(token: string) {
   return request<Employee[]>('/employees', { method: 'GET' }, token)
 }
 
 export async function createEmployee(payload: EmployeePayload, token: string) {
-  return request<Employee>('/employees', {
+  return request<CreateEmployeeResponse>('/employees', {
     method: 'POST',
     body: JSON.stringify(payload),
   }, token)
 }
 
 export async function deleteEmployee(id: number, token: string) {
-  await request<void>(`/employees/${id}`, {
+  await requestVoid(`/employees/${id}`, {
     method: 'DELETE',
   }, token)
 }

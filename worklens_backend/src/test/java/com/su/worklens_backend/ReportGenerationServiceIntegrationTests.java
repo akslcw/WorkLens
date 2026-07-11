@@ -17,9 +17,11 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.reset;
 
 @SpringBootTest
 class ReportGenerationServiceIntegrationTests extends PostgresIntegrationTestSupport {
@@ -175,7 +177,7 @@ class ReportGenerationServiceIntegrationTests extends PostgresIntegrationTestSup
     }
 
     @Test
-    void generateDailyReportsDoesNotPartiallyArchiveOrDeleteWhenLaterEmployeeLlmFails() {
+    void generateDailyReportsRetriesOnlyMissingReportsAndDeletesRawRecordsAfterTeamReportSucceeds() {
         long aliceEmployeeId = insertUser("employee.alice", "EMPLOYEE", "E001", "Alice");
         long bobEmployeeId = insertUser("employee.bob", "EMPLOYEE", "E002", "Bob");
         LocalDate reportDate = LocalDate.of(2026, 7, 8);
@@ -186,14 +188,24 @@ class ReportGenerationServiceIntegrationTests extends PostgresIntegrationTestSup
                 .willReturn("Alice daily summary")
                 .willThrow(new IllegalStateException("Second LLM call failed"));
 
-        assertThatThrownBy(() -> reportGenerationService.generateDailyReports(reportDate))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage("Second LLM call failed");
+        assertThatCode(() -> reportGenerationService.generateDailyReports(reportDate))
+                .doesNotThrowAnyException();
 
         Integer reportCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM llm_reports", Integer.class);
         Integer rawRecordCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM usage_records", Integer.class);
-        assertThat(reportCount).isZero();
+        assertThat(reportCount).isEqualTo(1);
         assertThat(rawRecordCount).isEqualTo(2);
+
+        reset(llmProvider);
+        given(llmProvider.generateText(anyString()))
+                .willReturn("Bob daily summary", "Team daily summary");
+
+        reportGenerationService.generateDailyReports(reportDate);
+
+        Integer recoveredReportCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM llm_reports", Integer.class);
+        Integer remainingRawRecordCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM usage_records", Integer.class);
+        assertThat(recoveredReportCount).isEqualTo(3);
+        assertThat(remainingRawRecordCount).isZero();
     }
 
     private long insertUser(String username, String role, String employeeNo, String name) {

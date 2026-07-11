@@ -82,9 +82,6 @@ ALTER TABLE usage_records
 ALTER TABLE usage_records
     DROP COLUMN IF EXISTS auth_user_id;
 
-DELETE FROM usage_records
-WHERE employee_id IS NULL;
-
 ALTER TABLE usage_records
     ALTER COLUMN employee_id SET NOT NULL;
 

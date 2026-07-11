@@ -1,5 +1,6 @@
 import threading
 import unittest
+import requests
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -52,6 +53,27 @@ class FakeActivityProbe:
 
 
 class SyncRuntimeTests(unittest.TestCase):
+
+    def test_login_network_failure_is_logged_without_crashing_runtime(self) -> None:
+        messages: list[str] = []
+
+        class FailingApiClient:
+            def __init__(self, base_url: str) -> None:
+                pass
+
+            def login(self, username: str, password: str):
+                raise requests.ConnectionError("network down")
+
+        runtime = SyncRuntime(
+            SyncRuntimeConfig("http://localhost:8080", 1, 300, 300, ":memory:"),
+            logger=messages.append,
+        )
+
+        with patch("worklens_desktop_client.sync_runtime.WorkLensApiClient", FailingApiClient), \
+                patch("worklens_desktop_client.sync_runtime.LocalRecordStore", lambda cache_db: object()):
+            runtime.run("employee.alice", "Password123!", threading.Event(), duration_seconds=0)
+
+        self.assertTrue(any("Login failed" in message for message in messages))
 
     def test_run_reports_logged_in_display_name(self) -> None:
         login_results: list[LoginResult] = []

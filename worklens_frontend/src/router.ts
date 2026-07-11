@@ -92,6 +92,10 @@ const routes: RouteRecordRaw[] = [
       role: 'EMPLOYEE',
     },
   },
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/',
+  },
 ]
 
 export function createAppRouter(history: RouterHistory = createWebHistory()) {

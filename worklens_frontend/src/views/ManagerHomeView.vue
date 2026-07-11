@@ -69,8 +69,8 @@ async function handleCreateEmployee() {
     employees.value = [...employees.value, createdEmployee].sort((left, right) => left.id - right.id)
     resetResult.value = {
       username: createdEmployee.employeeNo,
-      initialPassword: 'worklens123',
-      mustChangePassword: true,
+      initialPassword: createdEmployee.initialPassword,
+      mustChangePassword: createdEmployee.mustChangePassword,
     }
     form.name = ''
     form.employeeNo = ''
@@ -145,7 +145,7 @@ function toErrorMessage(error: unknown, fallback: string) {
       <div>
         <p class="eyebrow">Manager Workspace</p>
         <h1>员工档案管理</h1>
-        <p class="hero-copy">新增员工时会同步创建登录账号，账号名等于工号，初始密码为统一值。</p>
+        <p class="hero-copy">新增员工时会同步创建登录账号，账号名等于工号，并生成一次性临时密码。</p>
         <div class="hero-nav">
           <ManagerWorkspaceNav current="directory" />
         </div>
@@ -196,7 +196,7 @@ function toErrorMessage(error: unknown, fallback: string) {
           </button>
         </form>
 
-        <p class="panel-note">登录账号使用工号，初始密码为 worklens123。首次登录后必须修改密码。</p>
+        <p class="panel-note">登录账号使用工号。系统会生成随机临时密码，首次登录后必须修改。</p>
       </article>
 
       <article class="panel-card panel-card--list">

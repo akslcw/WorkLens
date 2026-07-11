@@ -14,7 +14,7 @@ const form = reactive({
 
 const submitting = ref(false)
 const errorMessage = ref('')
-const changedPassword = ref('')
+const passwordChanged = ref(false)
 
 async function handleChangePassword() {
   if (!session?.token || submitting.value) {
@@ -23,8 +23,7 @@ async function handleChangePassword() {
 
   submitting.value = true
   errorMessage.value = ''
-  changedPassword.value = ''
-  const submittedNewPassword = form.newPassword
+  passwordChanged.value = false
 
   try {
     const response = await changePassword(
@@ -40,7 +39,7 @@ async function handleChangePassword() {
       username: response.username,
       mustChangePassword: response.mustChangePassword,
     })
-    changedPassword.value = submittedNewPassword
+    passwordChanged.value = true
     form.currentPassword = ''
     form.newPassword = ''
   } catch (error) {
@@ -54,7 +53,7 @@ async function handleContinue() {
   if (!session) {
     return
   }
-  changedPassword.value = ''
+  passwordChanged.value = false
   await router.replace(resolveHomePath(session.role))
 }
 
@@ -70,13 +69,12 @@ async function handleLogout() {
       <p class="eyebrow">Password Required</p>
       <h1>修改初始密码</h1>
       <p class="intro-copy">
-        当前账号使用统一初始密码或被管理员重置过密码。修改完成后，才能继续进入 WorkLens 的业务页面。
+        当前账号正在使用系统生成的临时密码。修改完成后，才能继续进入 WorkLens 的业务页面。
       </p>
 
-      <div v-if="changedPassword" data-test="change-password-success" class="success-panel" role="status">
+      <div v-if="passwordChanged" data-test="change-password-success" class="success-panel" role="status">
         <strong>密码已修改</strong>
-        <p>你刚刚设置的新密码为：</p>
-        <code>{{ changedPassword }}</code>
+        <p>新密码已安全保存，请使用新密码继续登录和使用 WorkLens。</p>
         <button data-test="continue-after-password-change" class="primary-button" type="button" @click="handleContinue">
           进入 WorkLens
         </button>

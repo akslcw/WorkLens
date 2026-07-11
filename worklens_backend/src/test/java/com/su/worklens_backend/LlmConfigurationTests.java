@@ -25,6 +25,20 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 class LlmConfigurationTests {
 
     @Test
+    void llmProviderRejectsBlankApiKeyAtStartup() {
+        assertThatThrownBy(() -> new LlmConfiguration().llmProvider(
+                new RestTemplateBuilder(),
+                "https://api.deepseek.com",
+                "   ",
+                "deepseek-v4-flash",
+                Duration.ofSeconds(1),
+                Duration.ofSeconds(1)
+        ))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("DeepSeek API key must be configured");
+    }
+
+    @Test
     void llmProviderUsesConfiguredTimeoutsForHangingUpstream() throws Exception {
         try (HangingTcpServer server = HangingTcpServer.start()) {
             LlmProvider provider = new LlmConfiguration().llmProvider(

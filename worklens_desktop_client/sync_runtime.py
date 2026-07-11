@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+import requests
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -34,7 +35,11 @@ class SyncRuntime:
         store = LocalRecordStore(self._config.cache_db)
         sync_service = SyncService(client, store)
 
-        login_result = client.login(username, password)
+        try:
+            login_result = client.login(username, password)
+        except requests.RequestException as error:
+            self._logger(f"Login failed: {error}")
+            return
         if login_result.role != "EMPLOYEE":
             raise SystemExit("Only EMPLOYEE accounts can run the desktop collector.")
 

@@ -7,6 +7,10 @@ from worklens_desktop_client.api_client import WorkLensApiClient
 
 class WorkLensApiClientTests(unittest.TestCase):
 
+    def test_non_local_plain_http_base_url_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "HTTPS"):
+            WorkLensApiClient("http://worklens.example.com:8080")
+
     def test_login_posts_credentials_and_returns_token(self) -> None:
         session = Mock()
         response = Mock()

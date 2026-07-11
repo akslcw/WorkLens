@@ -39,15 +39,13 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
     @Override
     @Transactional
     public void archiveDailyReports(List<EmployeeDailyReportArchiveRequest> employeeReports, TeamDailyReportArchiveRequest teamReport) {
-        List<Long> sourceRecordIds = new ArrayList<>();
         for (EmployeeDailyReportArchiveRequest report : employeeReports) {
             insertEmployeeDailyReport(report);
-            sourceRecordIds.addAll(report.sourceRecordIds());
         }
         if (teamReport != null) {
             insertTeamDailyReport(teamReport);
+            deleteSourceRecords(teamReport.sourceRecordIds());
         }
-        deleteSourceRecords(sourceRecordIds);
     }
 
     @Override
@@ -132,6 +130,9 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
                             generated_at
                         )
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
+                        ON CONFLICT (report_scope, period_type, target_employee_id, period_start_date, period_end_date)
+                        WHERE report_scope = 'EMPLOYEE'
+                        DO NOTHING
                         """,
                 "EMPLOYEE_DAILY",
                 report.employeeId(),
@@ -173,6 +174,9 @@ public class ReportArchiveServiceImpl implements ReportArchiveService {
                             generated_at
                         )
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
+                        ON CONFLICT (report_scope, period_type, period_start_date, period_end_date)
+                        WHERE report_scope = 'TEAM'
+                        DO NOTHING
                         """,
                 "TEAM_DAILY",
                 null,

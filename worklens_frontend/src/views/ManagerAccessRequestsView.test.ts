@@ -7,7 +7,7 @@ describe('ManagerAccessRequestsView', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-07-08T12:00:00.000Z'))
-    localStorage.setItem(
+    sessionStorage.setItem(
       'worklens-session',
       JSON.stringify({
         token: 'manager-token',

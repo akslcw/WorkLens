@@ -5,7 +5,7 @@ import ManagerHomeView from './ManagerHomeView.vue'
 
 describe('ManagerHomeView', () => {
   beforeEach(() => {
-    localStorage.setItem(
+    sessionStorage.setItem(
       'worklens-session',
       JSON.stringify({
         token: 'manager-token',
@@ -77,6 +77,8 @@ describe('ManagerHomeView', () => {
             name: 'Carol Wu',
             employeeNo: 'WL-003',
             createdAt: '2026-07-05T10:00:00',
+            initialPassword: 'RandomCreatePassword7!',
+            mustChangePassword: true,
           }, 201)
         }
 
@@ -94,6 +96,8 @@ describe('ManagerHomeView', () => {
 
     expect(wrapper.get('[data-test="employee-list"]').text()).toContain('Carol Wu')
     expect(wrapper.get('[data-test="employee-list"]').text()).toContain('WL-003')
+    expect(wrapper.text()).toContain('RandomCreatePassword7!')
+    expect(wrapper.text()).not.toContain('worklens123')
   })
 
   it('resets an employee password from the action area below delete', async () => {
@@ -120,8 +124,7 @@ describe('ManagerHomeView', () => {
           })
           return jsonResponse({
             username: 'E001',
-            initialPassword: 'worklens123',
-            employeeNewPassword: 'Changed123!',
+            initialPassword: 'RandomResetPassword8!',
             mustChangePassword: true,
           })
         }
@@ -137,8 +140,8 @@ describe('ManagerHomeView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('E001')
-    expect(wrapper.text()).toContain('worklens123')
-    expect(wrapper.text()).not.toContain('Changed123!')
+    expect(wrapper.text()).toContain('RandomResetPassword8!')
+    expect(wrapper.text()).not.toContain('worklens123')
     expect(wrapper.text()).toContain('首次登录后必须修改密码')
   })
 
