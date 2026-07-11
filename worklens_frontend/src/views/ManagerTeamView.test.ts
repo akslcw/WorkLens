@@ -5,7 +5,7 @@ import ManagerTeamView from './ManagerTeamView.vue'
 
 describe('ManagerTeamView', () => {
   beforeEach(() => {
-    localStorage.setItem(
+    sessionStorage.setItem(
       'worklens-session',
       JSON.stringify({
         token: 'manager-token',

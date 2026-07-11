@@ -81,6 +81,10 @@ class WorkLensApiClientTests(unittest.TestCase):
         )
         self.assertTrue(login_result.must_change_password)
 
+    def test_non_local_plain_http_base_url_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ValueError, "HTTPS"):
+            WorkLensApiClient("http://worklens.example.com:8080")
+
     def test_login_posts_credentials_and_returns_token(self) -> None:
         session = Mock()
         response = Mock()

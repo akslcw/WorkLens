@@ -8,6 +8,10 @@ import win32gui
 import win32process
 
 
+def elapsed_millis_32bit(current_tick: int, last_input_tick: int) -> int:
+    return (current_tick - last_input_tick) & 0xFFFFFFFF
+
+
 class LastInputInfo(Structure):
     _fields_ = [
         ("cbSize", ctypes.c_uint),
@@ -29,7 +33,10 @@ class Win32ActivityProbe:
         last_input_info.cbSize = sizeof(LastInputInfo)
         if not ctypes.windll.user32.GetLastInputInfo(byref(last_input_info)):
             raise OSError("GetLastInputInfo failed")
-        elapsed_millis = ctypes.windll.kernel32.GetTickCount() - last_input_info.dwTime
+        elapsed_millis = elapsed_millis_32bit(
+            ctypes.windll.kernel32.GetTickCount(),
+            last_input_info.dwTime,
+        )
         return elapsed_millis / 1000.0
 
     def get_foreground_process_name(self) -> str:

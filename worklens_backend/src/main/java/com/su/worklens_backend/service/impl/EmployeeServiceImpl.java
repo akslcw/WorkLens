@@ -2,6 +2,7 @@ package com.su.worklens_backend.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.su.worklens_backend.dto.EmployeeRequest;
+import com.su.worklens_backend.dto.CreateEmployeeResponse;
 import com.su.worklens_backend.dto.ResetEmployeePasswordResponse;
 import com.su.worklens_backend.entity.AuthUser;
 import com.su.worklens_backend.entity.Employee;
@@ -14,17 +15,24 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.security.SecureRandom;
 import java.util.List;
 
 @Service
 public class EmployeeServiceImpl implements EmployeeService {
 
-    public static final String INITIAL_EMPLOYEE_PASSWORD = "worklens123";
     private static final String EMPLOYEE_ROLE = "EMPLOYEE";
+    private static final int TEMPORARY_PASSWORD_LENGTH = 20;
+    private static final String UPPERCASE = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    private static final String LOWERCASE = "abcdefghijkmnopqrstuvwxyz";
+    private static final String DIGITS = "23456789";
+    private static final String SYMBOLS = "!@#$%&*+-=?";
+    private static final String PASSWORD_CHARACTERS = UPPERCASE + LOWERCASE + DIGITS + SYMBOLS;
 
     private final EmployeeMapper employeeMapper;
     private final AuthUserMapper authUserMapper;
     private final PasswordHasher passwordHasher;
+    private final SecureRandom secureRandom = new SecureRandom();
 
     public EmployeeServiceImpl(EmployeeMapper employeeMapper, AuthUserMapper authUserMapper, PasswordHasher passwordHasher) {
         this.employeeMapper = employeeMapper;
@@ -33,7 +41,7 @@ public class EmployeeServiceImpl implements EmployeeService {
     }
 
     @Override
-    public Employee createEmployee(EmployeeRequest request) {
+    public CreateEmployeeResponse createEmployee(EmployeeRequest request) {
         Employee employee = new Employee();
         employee.setName(request.getName().trim());
         employee.setEmployeeNo(request.getEmployeeNo().trim());
@@ -42,15 +50,15 @@ public class EmployeeServiceImpl implements EmployeeService {
 
         AuthUser authUser = new AuthUser();
         authUser.setUsername(employee.getEmployeeNo());
-        // Shared initial passwords are accepted for MVP usability; must_change_password closes the normal-use window.
-        authUser.setPasswordHash(passwordHasher.hash(INITIAL_EMPLOYEE_PASSWORD));
+        String temporaryPassword = generateTemporaryPassword();
+        authUser.setPasswordHash(passwordHasher.hash(temporaryPassword));
         authUser.setRole(EMPLOYEE_ROLE);
         authUser.setEmployeeId(employee.getId());
         authUser.setMustChangePassword(true);
         authUser.setCreatedAt(LocalDateTime.now());
         authUserMapper.insert(authUser);
 
-        return employee;
+        return new CreateEmployeeResponse(employee, temporaryPassword);
     }
 
     @Override
@@ -95,9 +103,32 @@ public class EmployeeServiceImpl implements EmployeeService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Employee login account not found");
         }
 
-        authUser.setPasswordHash(passwordHasher.hash(INITIAL_EMPLOYEE_PASSWORD));
+        String temporaryPassword = generateTemporaryPassword();
+        authUser.setPasswordHash(passwordHasher.hash(temporaryPassword));
         authUser.setMustChangePassword(true);
         authUserMapper.updateById(authUser);
-        return new ResetEmployeePasswordResponse(authUser.getUsername(), INITIAL_EMPLOYEE_PASSWORD, true);
+        return new ResetEmployeePasswordResponse(authUser.getUsername(), temporaryPassword, true);
+    }
+
+    private String generateTemporaryPassword() {
+        char[] password = new char[TEMPORARY_PASSWORD_LENGTH];
+        password[0] = randomCharacter(UPPERCASE);
+        password[1] = randomCharacter(LOWERCASE);
+        password[2] = randomCharacter(DIGITS);
+        password[3] = randomCharacter(SYMBOLS);
+        for (int index = 4; index < password.length; index++) {
+            password[index] = randomCharacter(PASSWORD_CHARACTERS);
+        }
+        for (int index = password.length - 1; index > 0; index--) {
+            int swapIndex = secureRandom.nextInt(index + 1);
+            char value = password[index];
+            password[index] = password[swapIndex];
+            password[swapIndex] = value;
+        }
+        return new String(password);
+    }
+
+    private char randomCharacter(String characters) {
+        return characters.charAt(secureRandom.nextInt(characters.length()));
     }
 }

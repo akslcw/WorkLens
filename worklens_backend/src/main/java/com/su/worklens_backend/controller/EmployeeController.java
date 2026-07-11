@@ -1,6 +1,7 @@
 package com.su.worklens_backend.controller;
 
 import com.su.worklens_backend.dto.EmployeeRequest;
+import com.su.worklens_backend.dto.CreateEmployeeResponse;
 import com.su.worklens_backend.dto.ResetEmployeePasswordResponse;
 import com.su.worklens_backend.entity.Employee;
 import com.su.worklens_backend.service.EmployeeService;
@@ -31,7 +32,7 @@ public class EmployeeController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Employee createEmployee(@Valid @RequestBody EmployeeRequest request) {
+    public CreateEmployeeResponse createEmployee(@Valid @RequestBody EmployeeRequest request) {
         return employeeService.createEmployee(request);
     }
 

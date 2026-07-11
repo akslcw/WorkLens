@@ -26,7 +26,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class EmployeeControllerIntegrationTests extends PostgresIntegrationTestSupport {
 
     private static final String PASSWORD = "Password123!";
-    private static final String INITIAL_EMPLOYEE_PASSWORD = "worklens123";
     private static final String PASSWORD_HASH = "pbkdf2_sha256$120000$d29ya2xlbnMtc2FsdC0wMQ==$y7dDc5YjVRKR+v1GlPwEumSMa6Wa4bMH0h23Tk8Tx64=";
 
     @Autowired
@@ -83,7 +82,7 @@ class EmployeeControllerIntegrationTests extends PostgresIntegrationTestSupport 
     void managerCanCreateEmployee() throws Exception {
         String managerToken = insertManagerAndLogin();
 
-        mockMvc.perform(post("/employees")
+        MvcResult createResult = mockMvc.perform(post("/employees")
                         .header("Authorization", "Bearer " + managerToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -96,7 +95,16 @@ class EmployeeControllerIntegrationTests extends PostgresIntegrationTestSupport 
                 .andExpect(jsonPath("$.id").isNumber())
                 .andExpect(jsonPath("$.name").value("Alice"))
                 .andExpect(jsonPath("$.employeeNo").value("E001"))
-                .andExpect(jsonPath("$.createdAt").isNotEmpty());
+                .andExpect(jsonPath("$.createdAt").isNotEmpty())
+                .andExpect(jsonPath("$.initialPassword").isNotEmpty())
+                .andReturn();
+
+        String initialPassword = objectMapper.readTree(createResult.getResponse().getContentAsString())
+                .path("initialPassword")
+                .asText();
+        assertThat(initialPassword)
+                .hasSizeGreaterThanOrEqualTo(16)
+                .isNotEqualTo("worklens123");
 
         Integer accountCount = jdbcTemplate.queryForObject(
                 """
@@ -112,7 +120,7 @@ class EmployeeControllerIntegrationTests extends PostgresIntegrationTestSupport 
         );
         assertThat(accountCount).isEqualTo(1);
 
-        login("E001", INITIAL_EMPLOYEE_PASSWORD)
+        login("E001", initialPassword)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("E001"))
                 .andExpect(jsonPath("$.role").value("EMPLOYEE"))
@@ -122,8 +130,9 @@ class EmployeeControllerIntegrationTests extends PostgresIntegrationTestSupport 
     @Test
     void employeeWithInitialPasswordMustChangePasswordBeforeBusinessAccess() throws Exception {
         String managerToken = insertManagerAndLogin();
-        createEmployee(managerToken, "Alice", "E001");
-        String employeeToken = loginAndReadToken("E001", INITIAL_EMPLOYEE_PASSWORD);
+        JsonNode createdEmployee = createEmployeePayload(managerToken, "Alice", "E001");
+        String initialPassword = createdEmployee.path("initialPassword").asText();
+        String employeeToken = loginAndReadToken("E001", initialPassword);
 
         mockMvc.perform(get("/usage-records")
                         .header("Authorization", "Bearer " + employeeToken))
@@ -134,10 +143,10 @@ class EmployeeControllerIntegrationTests extends PostgresIntegrationTestSupport 
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "currentPassword": "worklens123",
+                                  "currentPassword": "%s",
                                   "newPassword": "Changed123!"
                                 }
-                                """))
+                                """.formatted(initialPassword)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.mustChangePassword").value(false));
 
@@ -147,20 +156,31 @@ class EmployeeControllerIntegrationTests extends PostgresIntegrationTestSupport 
     }
 
     @Test
-    void managerCanResetEmployeePasswordToSharedInitialPassword() throws Exception {
+    void managerCanResetEmployeePasswordToUniqueTemporaryPassword() throws Exception {
         String managerToken = insertManagerAndLogin();
-        long employeeId = createEmployee(managerToken, "Alice", "E001");
-        String employeeToken = loginAndReadToken("E001", INITIAL_EMPLOYEE_PASSWORD);
-        changePassword(employeeToken, INITIAL_EMPLOYEE_PASSWORD, "Changed123!");
+        JsonNode createdEmployee = createEmployeePayload(managerToken, "Alice", "E001");
+        long employeeId = createdEmployee.path("id").asLong();
+        String initialPassword = createdEmployee.path("initialPassword").asText();
+        String employeeToken = loginAndReadToken("E001", initialPassword);
+        changePassword(employeeToken, initialPassword, "Changed123!");
 
-        mockMvc.perform(post("/employees/{id}/reset-password", employeeId)
+        MvcResult resetResult = mockMvc.perform(post("/employees/{id}/reset-password", employeeId)
                         .header("Authorization", "Bearer " + managerToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("E001"))
-                .andExpect(jsonPath("$.initialPassword").value(INITIAL_EMPLOYEE_PASSWORD))
-                .andExpect(jsonPath("$.mustChangePassword").value(true));
+                .andExpect(jsonPath("$.initialPassword").isNotEmpty())
+                .andExpect(jsonPath("$.mustChangePassword").value(true))
+                .andReturn();
 
-        login("E001", INITIAL_EMPLOYEE_PASSWORD)
+        String resetPassword = objectMapper.readTree(resetResult.getResponse().getContentAsString())
+                .path("initialPassword")
+                .asText();
+        assertThat(resetPassword)
+                .hasSizeGreaterThanOrEqualTo(16)
+                .isNotEqualTo(initialPassword)
+                .isNotEqualTo("worklens123");
+
+        login("E001", resetPassword)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.mustChangePassword").value(true));
     }
@@ -298,6 +318,10 @@ class EmployeeControllerIntegrationTests extends PostgresIntegrationTestSupport 
     }
 
     private long createEmployee(String token, String name, String employeeNo) throws Exception {
+        return createEmployeePayload(token, name, employeeNo).path("id").asLong();
+    }
+
+    private JsonNode createEmployeePayload(String token, String name, String employeeNo) throws Exception {
         MvcResult result = mockMvc.perform(post("/employees")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -309,8 +333,7 @@ class EmployeeControllerIntegrationTests extends PostgresIntegrationTestSupport 
                                 """.formatted(name, employeeNo)))
                 .andReturn();
 
-        JsonNode jsonNode = objectMapper.readTree(result.getResponse().getContentAsString());
-        return jsonNode.path("id").asLong();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
     }
 
     private String readToken(MvcResult result) throws Exception {

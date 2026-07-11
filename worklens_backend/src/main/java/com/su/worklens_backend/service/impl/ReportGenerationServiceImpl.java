@@ -13,6 +13,8 @@ import com.su.worklens_backend.service.TeamDailyReportArchiveRequest;
 import com.su.worklens_backend.service.TeamMonthlyReportArchiveRequest;
 import com.su.worklens_backend.service.TeamWeeklyReportArchiveRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -32,6 +34,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class ReportGenerationServiceImpl implements ReportGenerationService {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ReportGenerationServiceImpl.class);
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
@@ -57,6 +61,7 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
         List<Long> employeeIds = findEmployeeIdsWithUsage(periodStartedAt, periodEndedAt);
         List<EmployeeDailyReportArchiveRequest> archiveRequests = new ArrayList<>();
         List<UsageRecordSnapshot> allSourceRecords = new ArrayList<>();
+        RuntimeException firstEmployeeFailure = null;
 
         for (Long employeeId : employeeIds) {
             List<UsageRecordSnapshot> sourceRecords = findDailyUsageRecords(employeeId, periodStartedAt, periodEndedAt);
@@ -64,39 +69,87 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                 continue;
             }
             allSourceRecords.addAll(sourceRecords);
+            if (employeeDailyReportExists(employeeId, reportDate)) {
+                continue;
+            }
 
-            List<ReportDetailItem> detailItems = buildDetailItems(sourceRecords);
-            String detailJson = toJson(detailItems);
-            String summary = llmProvider.generateText(buildEmployeeDailyPrompt(employeeId, reportDate, detailItems));
+            try {
+                List<ReportDetailItem> detailItems = buildDetailItems(sourceRecords);
+                String detailJson = toJson(detailItems);
+                String summary = llmProvider.generateText(buildEmployeeDailyPrompt(employeeId, reportDate, detailItems));
 
-            archiveRequests.add(new EmployeeDailyReportArchiveRequest(
-                    employeeId,
-                    reportDate,
-                    periodStartedAt,
-                    periodEndedAt,
-                    detailJson,
-                    summary,
-                    sourceRecords.size(),
-                    sourceRecords.stream().map(UsageRecordSnapshot::id).toList()
-            ));
+                archiveRequests.add(new EmployeeDailyReportArchiveRequest(
+                        employeeId,
+                        reportDate,
+                        periodStartedAt,
+                        periodEndedAt,
+                        detailJson,
+                        summary,
+                        sourceRecords.size(),
+                        sourceRecords.stream().map(UsageRecordSnapshot::id).toList()
+                ));
+            } catch (RuntimeException exception) {
+                if (firstEmployeeFailure == null) {
+                    firstEmployeeFailure = exception;
+                }
+                LOGGER.warn("Failed to generate daily report for one employee on {}. Raw records were retained.",
+                        reportDate, exception);
+            }
         }
 
-        if (!archiveRequests.isEmpty()) {
+        RuntimeException teamFailure = null;
+        TeamDailyReportArchiveRequest teamReport = null;
+        if (firstEmployeeFailure == null && !allSourceRecords.isEmpty()) {
             List<ReportDetailItem> teamDetailItems = buildDetailItems(allSourceRecords);
             String teamDetailJson = toJson(teamDetailItems);
-            String teamSummary = llmProvider.generateText(
-                    buildTeamDailyPrompt(reportDate, teamDetailItems, employeeIds.size(), allSourceRecords)
-            );
-            TeamDailyReportArchiveRequest teamReport = new TeamDailyReportArchiveRequest(
-                    reportDate,
-                    periodStartedAt,
-                    periodEndedAt,
-                    teamDetailJson,
-                    teamSummary,
-                    allSourceRecords.size()
-            );
+            try {
+                String teamSummary = llmProvider.generateText(
+                        buildTeamDailyPrompt(reportDate, teamDetailItems, employeeIds.size(), allSourceRecords)
+                );
+                teamReport = new TeamDailyReportArchiveRequest(
+                        reportDate,
+                        periodStartedAt,
+                        periodEndedAt,
+                        teamDetailJson,
+                        teamSummary,
+                        allSourceRecords.size(),
+                        allSourceRecords.stream().map(UsageRecordSnapshot::id).toList()
+                );
+            } catch (RuntimeException exception) {
+                teamFailure = exception;
+                LOGGER.warn("Failed to generate team daily report on {}. Successful employee reports will still be archived.",
+                        reportDate, exception);
+            }
+        }
+
+        if (!archiveRequests.isEmpty() || teamReport != null) {
             reportArchiveService.archiveDailyReports(archiveRequests, teamReport);
         }
+        if (teamFailure != null) {
+            throw teamFailure;
+        }
+        if (archiveRequests.isEmpty() && firstEmployeeFailure != null) {
+            throw firstEmployeeFailure;
+        }
+    }
+
+    private boolean employeeDailyReportExists(Long employeeId, LocalDate reportDate) {
+        Integer count = jdbcTemplate.queryForObject(
+                """
+                        SELECT COUNT(*)
+                        FROM llm_reports
+                        WHERE report_scope = 'EMPLOYEE'
+                          AND period_type = 'DAILY'
+                          AND target_employee_id = ?
+                          AND period_start_date = ?
+                          AND period_end_date = ?
+                        """,
+                Integer.class,
+                employeeId,
+                reportDate,
+                reportDate
+        );
+        return count != null && count > 0;
     }
 
     @Override
@@ -248,12 +301,11 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                 Do not use Markdown, bullet syntax, headings, bold markers, tables, or code fences.
                 Do not mention any other employees or team-level comparisons.
 
-                Employee id: %d
                 Report date: %s
 
                 Structured app usage:
                 %s
-                """.formatted(employeeId, reportDate, appSummary);
+                """.formatted(reportDate, appSummary);
     }
 
     private String buildTeamDailyPrompt(
@@ -540,12 +592,11 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                 Do not use Markdown, bullet syntax, headings, bold markers, tables, or code fences.
                 Do not mention any other employees or team-level comparisons.
 
-                Employee id: %d
                 Reporting week: %s to %s
 
                 Structured app usage aggregated from daily reports:
                 %s
-                """.formatted(employeeId, weekStartDate, weekEndDate, appSummary);
+                """.formatted(weekStartDate, weekEndDate, appSummary);
     }
 
     private String buildTeamWeeklyPrompt(LocalDate weekStartDate, LocalDate weekEndDate, List<ReportDetailItem> detailItems) {
@@ -596,12 +647,11 @@ public class ReportGenerationServiceImpl implements ReportGenerationService {
                 Do not use Markdown, bullet syntax, headings, bold markers, tables, or code fences.
                 Do not mention any other employees or team-level comparisons.
 
-                Employee id: %d
                 Reporting month: %s to %s
 
                 Structured app usage aggregated from weekly reports:
                 %s
-                """.formatted(employeeId, monthStartDate, monthEndDate, appSummary);
+                """.formatted(monthStartDate, monthEndDate, appSummary);
     }
 
     private String buildTeamMonthlyPrompt(LocalDate monthStartDate, LocalDate monthEndDate, List<ReportDetailItem> detailItems) {

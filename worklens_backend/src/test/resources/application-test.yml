@@ -7,3 +7,7 @@ spring:
   sql:
     init:
       mode: always
+worklens:
+  llm:
+    deepseek:
+      api-key: test-api-key

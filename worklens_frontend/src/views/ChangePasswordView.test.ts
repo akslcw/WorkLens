@@ -5,7 +5,7 @@ import ChangePasswordView from './ChangePasswordView.vue'
 
 describe('ChangePasswordView', () => {
   beforeEach(() => {
-    localStorage.setItem(
+    sessionStorage.setItem(
       'worklens-session',
       JSON.stringify({
         token: 'employee-token',
@@ -17,7 +17,7 @@ describe('ChangePasswordView', () => {
     vi.restoreAllMocks()
   })
 
-  it('shows the new password once after a successful change before continuing', async () => {
+  it('confirms a successful change without rendering the new password', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -48,8 +48,9 @@ describe('ChangePasswordView', () => {
     await flushPromises()
 
     expect(router.currentRoute.value.fullPath).toBe('/change-password')
-    expect(wrapper.get('[data-test="change-password-success"]').text()).toContain('Changed123!')
-    expect(JSON.parse(localStorage.getItem('worklens-session') ?? '{}')).toMatchObject({
+    expect(wrapper.get('[data-test="change-password-success"]').text()).toContain('密码已修改')
+    expect(wrapper.get('[data-test="change-password-success"]').text()).not.toContain('Changed123!')
+    expect(JSON.parse(sessionStorage.getItem('worklens-session') ?? '{}')).toMatchObject({
       mustChangePassword: false,
     })
 

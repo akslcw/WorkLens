@@ -10,6 +10,7 @@ const SESSION_STORAGE_KEY = 'worklens-session'
 
 describe('App routing', () => {
   beforeEach(() => {
+    sessionStorage.clear()
     localStorage.clear()
     vi.unstubAllGlobals()
   })
@@ -65,7 +66,7 @@ describe('App routing', () => {
     expect(wrapper.text()).toContain('Manager User')
     expect(wrapper.text()).toContain('员工档案管理')
     expect(wrapper.text()).toContain('No employees yet')
-    expect(JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) ?? '{}')).toMatchObject({
+    expect(JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY) ?? '{}')).toMatchObject({
       token: 'manager-token',
       role: 'MANAGER',
     })
@@ -90,7 +91,7 @@ describe('App routing', () => {
     expect(wrapper.text()).toContain('Li')
     expect(wrapper.text()).toContain('个人效率面板')
     expect(wrapper.text()).toContain('暂无个人使用记录')
-    expect(JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) ?? '{}')).toMatchObject({
+    expect(JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY) ?? '{}')).toMatchObject({
       token: 'employee-token',
       role: 'EMPLOYEE',
     })
@@ -116,7 +117,7 @@ describe('App routing', () => {
   })
 
   it('restores an existing manager session and allows protected routes', async () => {
-    localStorage.setItem(
+    sessionStorage.setItem(
       SESSION_STORAGE_KEY,
       JSON.stringify({
         token: 'stored-manager-token',
@@ -140,6 +141,29 @@ describe('App routing', () => {
 
     expect(router.currentRoute.value.fullPath).toBe('/manager')
     expect(wrapper.text()).toContain('员工档案管理')
+  })
+
+  it('redirects unknown routes instead of rendering a blank page', async () => {
+    const router = createAppRouter(createMemoryHistory())
+    router.push('/missing-page')
+    await router.isReady()
+
+    expect(router.currentRoute.value.fullPath).toBe('/login')
+  })
+
+  it('removes legacy localStorage tokens instead of restoring them', async () => {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+      token: 'legacy-token',
+      username: 'manager',
+      role: 'MANAGER',
+    }))
+
+    const router = createAppRouter(createMemoryHistory())
+    router.push('/')
+    await router.isReady()
+
+    expect(router.currentRoute.value.fullPath).toBe('/login')
+    expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull()
   })
 })
 

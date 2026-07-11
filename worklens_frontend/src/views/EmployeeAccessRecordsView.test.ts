@@ -5,7 +5,7 @@ import EmployeeAccessRecordsView from './EmployeeAccessRecordsView.vue'
 
 describe('EmployeeAccessRecordsView', () => {
   beforeEach(() => {
-    localStorage.setItem(
+    sessionStorage.setItem(
       'worklens-session',
       JSON.stringify({
         token: 'employee-token',

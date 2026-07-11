@@ -56,13 +56,13 @@ $env:WORKLENS_DB_PORT='5432'
 $env:WORKLENS_DB_NAME='worklens'
 $env:WORKLENS_DB_USERNAME='worklens'
 $env:WORKLENS_DB_PASSWORD='change-me'
+$env:WORKLENS_DEEPSEEK_API_KEY='your-deepseek-api-key'
 .\mvnw.cmd spring-boot:run
 ```
 
-可选 LLM 配置：
+其余可选 LLM 配置：
 
 ```powershell
-$env:WORKLENS_DEEPSEEK_API_KEY='your-deepseek-api-key'
 $env:WORKLENS_DEEPSEEK_BASE_URL='https://api.deepseek.com'
 $env:WORKLENS_DEEPSEEK_MODEL='deepseek-v4-flash'
 $env:WORKLENS_DEEPSEEK_CONNECT_TIMEOUT='5s'
@@ -136,11 +136,11 @@ python -m worklens_desktop_client.collect_activity
 ### 登录与账号体系
 
 - 员工使用员工工号登录。
-- 新员工和被重置密码的员工使用统一初始密码 `worklens123`。
+- 新员工和被重置密码的员工会获得独立、安全随机的临时密码。
 - 新账号或重置后的账号会被标记为 `mustChangePassword=true`。
 - `mustChangePassword=true` 的账号可以登录，但在 Web 端改密前不能访问业务 API。
-- 员工新设置的密码只会在员工本人改密成功页短暂显示一次，管理者界面不会展示员工的新密码。
-- 管理者重置员工密码后，只展示统一初始临时密码。
+- 员工新设置的密码不会在改密成功页回显。
+- 管理者创建账号或重置密码后，只展示后端本次生成的临时密码。
 
 ### 员工视角
 
@@ -366,5 +366,5 @@ python -m unittest discover worklens_desktop_client/tests
 - 团队人数过少时，团队聚合数据在数学上可能接近个体明细。当前版本没有实现最小团队人数门槛、小样本隐藏或更强匿名化。
 - 桌面客户端只采集应用名或进程名，不采集窗口标题、浏览器 URL 或域名。
 - 月报采用严格层级汇总，只汇总已生成周报。周报边界和自然月边界不完全一致时，月报覆盖范围可能和自然月有少量出入。
-- 所有新员工和被重置密码的员工会短暂共享统一初始密码 `worklens123`。系统会强制登录后改密，但员工完成改密前存在短暂窗口期风险。
+- 临时密码仅在创建账号或重置密码的响应中返回一次；管理员需通过安全渠道交给对应员工。
 - 当前系统仍是原型，没有包含生产部署加固、组织层级、多级审批或运行监控。

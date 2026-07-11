@@ -16,11 +16,14 @@ public class LlmConfiguration {
     public LlmProvider llmProvider(
             RestTemplateBuilder restTemplateBuilder,
             @Value("${worklens.llm.deepseek.base-url}") String baseUrl,
-            @Value("${worklens.llm.deepseek.api-key:}") String apiKey,
+            @Value("${worklens.llm.deepseek.api-key}") String apiKey,
             @Value("${worklens.llm.deepseek.model}") String model,
             @Value("${worklens.llm.deepseek.connect-timeout}") Duration connectTimeout,
             @Value("${worklens.llm.deepseek.read-timeout}") Duration readTimeout
     ) {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new IllegalArgumentException("DeepSeek API key must be configured");
+        }
         return new DeepSeekLlmProvider(
                 restTemplateBuilder
                         .setConnectTimeout(connectTimeout)

@@ -11,7 +11,8 @@ export type AuthSession = {
 }
 
 export function readStoredSession() {
-  const raw = localStorage.getItem(SESSION_STORAGE_KEY)
+  localStorage.removeItem(SESSION_STORAGE_KEY)
+  const raw = sessionStorage.getItem(SESSION_STORAGE_KEY)
   if (!raw) {
     return null
   }
@@ -19,16 +20,18 @@ export function readStoredSession() {
   try {
     return JSON.parse(raw) as AuthSession
   } catch {
-    localStorage.removeItem(SESSION_STORAGE_KEY)
+    sessionStorage.removeItem(SESSION_STORAGE_KEY)
     return null
   }
 }
 
 export function persistSession(session: AuthSession) {
-  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+  localStorage.removeItem(SESSION_STORAGE_KEY)
+  sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
 }
 
 export function clearSession() {
+  sessionStorage.removeItem(SESSION_STORAGE_KEY)
   localStorage.removeItem(SESSION_STORAGE_KEY)
 }
 

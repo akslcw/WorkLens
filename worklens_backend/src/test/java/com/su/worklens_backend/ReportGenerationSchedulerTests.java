@@ -75,7 +75,7 @@ class ReportGenerationSchedulerTests {
         Scheduled scheduled = method.getAnnotation(Scheduled.class);
 
         assertThat(scheduled).isNotNull();
-        assertThat(scheduled.cron()).isEqualTo("${worklens.reports.monthly-cron:0 55 23 * * *}");
+        assertThat(scheduled.cron()).isEqualTo("${worklens.reports.monthly-cron:0 55 23 28-31 * *}");
         assertThat(scheduled.zone()).isEqualTo("${worklens.reports.zone:Asia/Hong_Kong}");
     }
 

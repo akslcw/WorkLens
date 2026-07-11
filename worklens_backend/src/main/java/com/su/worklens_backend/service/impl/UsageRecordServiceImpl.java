@@ -126,49 +126,49 @@ public class UsageRecordServiceImpl implements UsageRecordService {
 
     @Override
     public TeamUsageSummaryResponse getTeamUsageSummary() {
-        List<UsageRecord> usageRecords = usageRecordMapper.selectList(null);
-        if (usageRecords.isEmpty()) {
+        Map<String, Object> totals = jdbcTemplate.queryForMap(
+                """
+                        SELECT COALESCE(SUM(FLOOR(EXTRACT(EPOCH FROM (ended_at - started_at)) / 60)), 0)::bigint
+                                   AS total_usage_minutes,
+                               COUNT(DISTINCT employee_id)::bigint AS active_employee_count
+                        FROM usage_records
+                        """
+        );
+        long totalUsageMinutes = ((Number) totals.get("total_usage_minutes")).longValue();
+        int activeEmployeeCount = ((Number) totals.get("active_employee_count")).intValue();
+        if (activeEmployeeCount == 0) {
             return new TeamUsageSummaryResponse(BigDecimal.ZERO, 0L, 0, List.of());
         }
+        if (totalUsageMinutes == 0) {
+            return new TeamUsageSummaryResponse(BigDecimal.ZERO, 0L, activeEmployeeCount, List.of());
+        }
 
-        long totalUsageMinutes = usageRecords.stream()
-                .mapToLong(this::calculateUsageMinutes)
-                .sum();
-
-        int activeEmployeeCount = (int) usageRecords.stream()
-                .map(UsageRecord::getEmployeeId)
-                .distinct()
-                .count();
-
-        BigDecimal teamAverageUsageMinutes = activeEmployeeCount == 0
-                ? BigDecimal.ZERO
-                : BigDecimal.valueOf(totalUsageMinutes)
+        BigDecimal teamAverageUsageMinutes = BigDecimal.valueOf(totalUsageMinutes)
                 .divide(BigDecimal.valueOf(activeEmployeeCount), 2, RoundingMode.HALF_UP)
                 .stripTrailingZeros();
 
-        Map<String, Long> usageMinutesByApp = usageRecords.stream()
-                .collect(Collectors.groupingBy(
-                        UsageRecord::getAppName,
-                        LinkedHashMap::new,
-                        Collectors.summingLong(this::calculateUsageMinutes)
-                ));
-
-        List<AppUsageRatioResponse> appUsageRatios = usageMinutesByApp.entrySet().stream()
-                .sorted(Map.Entry.<String, Long>comparingByValue(Comparator.reverseOrder())
-                        .thenComparing(Map.Entry.comparingByKey()))
-                .map(entry -> new AppUsageRatioResponse(
-                        entry.getKey(),
-                        entry.getValue(),
-                        BigDecimal.valueOf(entry.getValue())
+        List<AppUsageRatioResponse> appUsageRatios = jdbcTemplate.queryForList(
+                        """
+                                SELECT app_name,
+                                       SUM(FLOOR(EXTRACT(EPOCH FROM (ended_at - started_at)) / 60))::bigint AS usage_minutes
+                                FROM usage_records
+                                GROUP BY app_name
+                                HAVING SUM(FLOOR(EXTRACT(EPOCH FROM (ended_at - started_at)) / 60)) > 0
+                                ORDER BY usage_minutes DESC, app_name ASC
+                                """
+                ).stream()
+                .map(row -> {
+                    long usageMinutes = ((Number) row.get("usage_minutes")).longValue();
+                    return new AppUsageRatioResponse(
+                        row.get("app_name").toString(),
+                        usageMinutes,
+                        BigDecimal.valueOf(usageMinutes)
                                 .divide(BigDecimal.valueOf(totalUsageMinutes), 4, RoundingMode.HALF_UP)
-                ))
+                    );
+                })
                 .toList();
 
         return new TeamUsageSummaryResponse(teamAverageUsageMinutes, totalUsageMinutes, activeEmployeeCount, appUsageRatios);
-    }
-
-    private long calculateUsageMinutes(UsageRecord usageRecord) {
-        return Duration.between(usageRecord.getStartedAt(), usageRecord.getEndedAt()).toMinutes();
     }
 
     private List<UsageAppCardResponse> buildUsageAppCards(List<UsageRecord> rawRecords) {

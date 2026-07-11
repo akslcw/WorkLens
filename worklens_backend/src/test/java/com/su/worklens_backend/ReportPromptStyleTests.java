@@ -37,6 +37,7 @@ class ReportPromptStyleTests {
         assertThat(prompt).contains("Do not use Markdown");
         assertThat(prompt).contains("encouraging daily personal productivity summary");
         assertThat(prompt).contains("Structured app usage");
+        assertThat(prompt).doesNotContain("Employee id");
     }
 
     @Test
