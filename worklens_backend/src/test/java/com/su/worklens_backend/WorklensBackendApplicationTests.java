@@ -63,18 +63,8 @@ class WorklensBackendApplicationTests extends PostgresIntegrationTestSupport {
     }
 
     @Test
-    void healthEndpointRequiresAuthentication() throws Exception {
+    void healthEndpointReturnsOkWithoutAuthentication() throws Exception {
         mockMvc.perform(get("/health"))
-                .andExpect(status().isUnauthorized());
-    }
-
-    @Test
-    void healthEndpointReturnsOkForAuthenticatedUser() throws Exception {
-        insertUser("manager", PASSWORD_HASH, "MANAGER", "M001", "Manager User");
-        String token = loginAndReadToken("manager", PASSWORD);
-
-        mockMvc.perform(get("/health")
-                        .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(content().string("OK"));
     }

@@ -17,6 +17,7 @@ import java.util.Locale;
 public class AuthTokenFilter extends OncePerRequestFilter {
 
     private static final String LOGIN_PATH = "/auth/login";
+    private static final String HEALTH_PATH = "/health";
     private static final String CURRENT_USER_PATH = "/auth/me";
     private static final String CHANGE_PASSWORD_PATH = "/auth/change-password";
     private static final String EMPLOYEES_PATH_PREFIX = "/employees";
@@ -42,7 +43,7 @@ public class AuthTokenFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String requestPath = request.getRequestURI();
         String requestMethod = request.getMethod().toUpperCase(Locale.ROOT);
-        if (LOGIN_PATH.equals(requestPath)) {
+        if (LOGIN_PATH.equals(requestPath) || HEALTH_PATH.equals(requestPath)) {
             filterChain.doFilter(request, response);
             return;
         }

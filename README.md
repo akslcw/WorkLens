@@ -1,361 +1,270 @@
 # WorkLens
 
-WorkLens 是一个用于采集员工桌面应用使用情况、向员工展示个人使用视图、向管理者展示团队聚合视图，并自动生成日报/周报/月报的原型系统。
+WorkLens 采集 Windows 桌面应用使用数据，为员工提供个人回顾，为管理者提供隐私受限的团队聚合分析和自动报告。
+
+> 当前状态：已完成八阶段真实回归测试。
 
 ## 技术栈
 
-- 后端：Java 17、Spring Boot 3、MyBatis-Plus、PostgreSQL
-- 前端：Vue 3、TypeScript、Vite、Vue Router、Vitest
-- 桌面客户端：Python、Windows 前台应用检测、系统托盘、本地 SQLite 重试缓存
-- 数据库：PostgreSQL 16，本地通过 Docker Compose 启动
-- LLM：后端通过 `LlmProvider` 接入 DeepSeek 兼容的 Chat Completion API
+- 后端：Java 17、Spring Boot、MyBatis-Plus、PostgreSQL
+- 前端：Vue 3、TypeScript、Vite
+- 桌面客户端：Python、pywin32、pystray、SQLite
+- AI 报告：DeepSeek API
 
 ## 项目结构
 
 ```text
 .
-|-- compose.yml                     # 本地 PostgreSQL 服务
-|-- .env.example                    # 本地数据库环境变量示例
-|-- docs/                           # 设计说明和阶段记录
-|-- worklens_backend/               # Spring Boot API、报告生成、数据库 schema
-|-- worklens_frontend/              # 员工和管理者使用的 Vue Web 应用
-`-- worklens_desktop_client/        # Windows 桌面采集和同步客户端
+├── worklens_backend/         # Spring Boot API、权限控制和报告任务
+├── worklens_frontend/        # 员工端与管理端 Vue 应用
+├── worklens_desktop_client/  # Windows 桌面采集和托盘客户端
+├── docs/                     # 设计说明与阶段记录
+├── compose.yml               # 本地 PostgreSQL 服务
+└── .env.example              # 环境变量示例
 ```
 
 ## 本地启动
 
-### 1. 启动 PostgreSQL
+以下命令均从项目根目录或对应子目录执行，只使用项目相对路径。示例使用 PowerShell。
 
-在仓库根目录执行：
+### 环境要求
+
+- Windows（桌面采集依赖 pywin32）
+- JDK 17，并正确设置 `JAVA_HOME`
+- Docker Desktop 与 Docker Compose
+- Node.js `20.19+` 或 `22.12+`，以及 npm
+- Python 3 与 pip
+- 可用的 DeepSeek API Key
+
+### 1. 准备环境变量
+
+复制示例文件：
 
 ```powershell
-docker compose --env-file .env.example -f compose.yml up -d
+Copy-Item .env.example .env
 ```
 
-查看容器状态：
+填写 `.env` 中的数据库连接信息，并补充 DeepSeek API Key：
 
-```powershell
-docker ps
+```dotenv
+WORKLENS_DB_HOST=127.0.0.1
+WORKLENS_DB_PORT=5432
+WORKLENS_DB_NAME=worklens
+WORKLENS_DB_USERNAME=worklens
+WORKLENS_DB_PASSWORD=change-me
+WORKLENS_DEEPSEEK_API_KEY=your-deepseek-api-key
 ```
 
-如果需要重建本地数据库卷：
+数据库密码和 API Key 不应提交到版本库。DeepSeek 地址、模型、超时以及报告定时配置均可继续通过环境变量覆盖，详见“自动化报告体系”。
+
+### 2. 启动 PostgreSQL
+
+`compose.yml` 会自动读取项目根目录的 `.env`：
 
 ```powershell
-docker compose -f compose.yml down -v
-docker compose --env-file .env.example -f compose.yml up -d
+docker compose up -d
 ```
 
-### 2. 启动后端
-
-在启动 Spring Boot 的同一个 shell 中设置数据库环境变量：
+查看数据库容器状态：
 
 ```powershell
-cd worklens_backend
-$env:WORKLENS_DB_HOST='127.0.0.1'
-$env:WORKLENS_DB_PORT='5432'
-$env:WORKLENS_DB_NAME='worklens'
-$env:WORKLENS_DB_USERNAME='worklens'
-$env:WORKLENS_DB_PASSWORD='change-me'
-$env:WORKLENS_DEEPSEEK_API_KEY='your-deepseek-api-key'
+docker compose ps
+```
+
+### 3. 启动 Spring Boot 后端
+
+在新的 PowerShell 窗口中，从项目根目录把 `.env` 载入当前进程，再启动后端：
+
+```powershell
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^\s*([^#][^=]*)=(.*)$') {
+    Set-Item -Path "Env:$($matches[1].Trim())" -Value $matches[2]
+  }
+}
+Set-Location worklens_backend
 .\mvnw.cmd spring-boot:run
 ```
 
-其余可选 LLM 配置：
+这段脚本只把简单的 `KEY=value` 配置载入当前 PowerShell 进程；每个新的后端或后端测试窗口都需要重新执行，不要在值两侧添加引号或行尾注释。
+
+后端默认监听 `http://localhost:8080`，启动时会通过 `schema.sql` 创建或补齐表结构。
+
+验证无需认证的公开健康检查：
 
 ```powershell
-$env:WORKLENS_DEEPSEEK_BASE_URL='https://api.deepseek.com'
-$env:WORKLENS_DEEPSEEK_MODEL='deepseek-v4-flash'
-$env:WORKLENS_DEEPSEEK_CONNECT_TIMEOUT='5s'
-$env:WORKLENS_DEEPSEEK_READ_TIMEOUT='15s'
+Invoke-RestMethod http://localhost:8080/health
 ```
 
-健康检查：
+预期返回 `OK`。
 
-```text
-GET http://localhost:8080/health
-```
+> 全新数据库只会初始化表结构，不会创建默认管理者账号。当前仓库也没有面向生产环境的管理员自助初始化入口；在预置一个绑定员工档案的 `MANAGER` 账号前，可以完成服务启动和健康检查，但不能完成登录、新增员工与桌面采集闭环。
 
-预期返回：
+### 4. 启动 Vue 前端
 
-```text
-ok
-```
-
-后端启动时会执行 `schema.sql`，自动创建或补齐所需表结构。
-
-### 3. 启动前端
+在新的 PowerShell 窗口中执行：
 
 ```powershell
-cd worklens_frontend
+Set-Location worklens_frontend
 npm install
 npm run dev
 ```
 
-默认访问地址：
+默认访问地址为 `http://localhost:5173`。浏览器侧请求使用 `/api/*`，Vite 会移除 `/api` 前缀后代理到 `http://127.0.0.1:8080`；接口表列出的均是后端直连路径。
 
-```text
-http://localhost:5173
-```
+### 5. 启动桌面托盘客户端
 
-Vite 开发服务器会把 `/api/*` 代理到 `http://127.0.0.1:8080`。
-
-### 4. 启动桌面客户端
-
-安装 Python 依赖：
+员工应先在 Web 端完成首次登录和强制改密。然后在新的 PowerShell 窗口中，从项目根目录安装依赖：
 
 ```powershell
 python -m pip install -r worklens_desktop_client/requirements.txt
 ```
 
-以系统托盘方式运行：
+启动 Windows 托盘客户端：
 
 ```powershell
 pythonw -m worklens_desktop_client.tray_app
 ```
 
-在控制台中持续采集并同步：
+客户端会弹出登录窗口。托盘菜单显示运行状态和当前登录员工，选择“退出”会停止后台采集并退出进程。
+
+如需在控制台观察采集和同步日志，可改用：
 
 ```powershell
 python -m worklens_desktop_client.run_sync_client --base-url http://localhost:8080
-```
-
-手动上传一条验证记录：
-
-```powershell
-python -m worklens_desktop_client.manual_report --base-url http://localhost:8080
-```
-
-只在本地采集并输出合并结果，不上传：
-
-```powershell
-python -m worklens_desktop_client.collect_activity
 ```
 
 ## 核心功能
 
 ### 登录与账号体系
 
-- 员工使用员工工号登录。
-- 新员工和被重置密码的员工会获得独立、安全随机的临时密码。
-- 新账号或重置后的账号会被标记为 `mustChangePassword=true`。
-- `mustChangePassword=true` 的账号可以登录，但在 Web 端改密前不能访问业务 API。
-- 员工新设置的密码不会在改密成功页回显。
-- 管理者创建账号或重置密码后，只展示后端本次生成的临时密码。
+- 用户名等于员工工号；管理者新增员工时，系统同步创建登录账号。
+- 新建员工或重置密码时，系统生成独立的 20 位随机临时密码，并强制包含大写字母、小写字母、数字和符号。
+- 临时密码只在本次接口响应和管理页面中展示一次；首次登录或密码重置后必须修改密码。
+- 强制改密由三层共同拦截：后端禁止访问业务 API，前端路由只允许进入改密页，桌面客户端拒绝启动采集。
+- 桌面客户端只允许员工账号运行；服务端始终以有效登录身份判定账号和角色。
 
-### 员工视角
+### 双视角权限边界
 
-员工只能查看自己的数据。
-
-“我的使用明细”页面有两种展示模式：
-
-- 当天尚未生成日报前，展示实时应用卡片。每张卡片按应用名聚合，展示累计时长，并可展开查看使用时间段。
-- 历史日期展示覆盖该日期的报告。随着滚动清理推进，可能展示日报、周报或月报。
-
-实时卡片视图规则：
-
-- 按应用聚合；
-- 所有使用片段都计入累计值；
-- 写入记录时沿用 15 秒合并规则；
-- 每页最多展示 10 个应用卡片。
-
-### 管理者视角
-
-管理者默认只能查看团队聚合数据。
-
-团队报告和团队摘要不得暴露个体明细。团队报告的 `detail_json` 只包含：
-
-- 应用名；
-- 周期内累计时长；
-- 周期内占比。
-
-团队报告不得包含员工姓名、员工工号、用户名、原始记录 ID、单条记录开始/结束时间，或任何按员工拆分的行。
+- 员工对本人的使用数据和报告拥有常规访问权限；管理者只有在该员工批准后才能一次性查看个人明细。
+- 管理者默认只能访问团队聚合数据，不能直接读取员工个人明细。
+- 团队聚合和团队报告只包含应用、累计时长及占比，不包含员工身份或个人记录。
+- 服务端不信任前端或桌面客户端传入的身份字段，数据归属以登录 token 解析出的身份为准。
 
 ### 审计授权流程
 
-管理者不能直接浏览员工个人明细。
-
-授权流程：
-
-1. 管理者提交明细查看申请并填写原因。
-2. 目标员工查看申请。
-3. 员工批准或拒绝申请。
-4. 批准后，管理者获得一次性查看权限。
-5. 管理者实际查看时写入审计日志。
-6. 授权使用后立即失效。
-
-审计授权后的页面也遵循同一展示规则：
-
-- 当天尚未归档：实时应用卡片；
-- 历史日期：覆盖该日期的日报、周报或月报。
+1. 管理者选择目标员工并填写理由，发起个人明细查看申请。
+2. 只有目标员工本人可以批准或拒绝申请。
+3. 批准后，申请仅提供一次查看机会。
+4. 管理者实际查看时写入访问记录，授权随即失效，不能重复使用。
 
 ### 桌面采集客户端
 
-Windows 桌面客户端当前行为：
+- 每 5 秒采样一次当前活跃进程，只记录应用名或进程名。
+- 连续 5 分钟没有键盘或鼠标操作时，将该时间段记为 `Idle`。
+- 每 5 分钟合并并批量上报采集记录。
+- 网络或服务异常时写入本地 SQLite 缓存，连接恢复后自动补传。
+- 托盘图标展示运行/停止状态、当前登录员工，并提供真实退出操作。
 
-- 每 5 秒采样一次当前前台进程；
-- 只采集应用名或进程名；
-- 不采集窗口标题；
-- 不采集浏览器 URL 或域名；
-- 连续 5 分钟没有键鼠输入时记为 `Idle`；
-- `Idle` 作为独立应用桶记录；
-- 每 5 分钟批量上传；
-- 上传失败时写入本地 SQLite，恢复后自动重试；
-- 托盘状态显示运行中/已停止，并显示当前登录用户姓名。
+### 前端使用视图
 
-员工应先在 Web 端完成首次登录和改密，再启动桌面客户端。如果后端返回需要改密，桌面客户端会保留本地缓存，并在日志中提示必须先到 Web 端完成改密。
+- 员工端显示当天实时应用卡片，可展开查看应用使用时间段。
+- 历史日期展示覆盖该日期的已归档日报、周报或月报。
+- 管理者端提供团队聚合面板、团队报告历史和审计申请页面。
+- 员工端提供审批与访问记录页面，可查看申请状态及授权是否已被实际使用。
 
-## 自动报告体系
+## 自动化报告体系
 
-报告由系统自动生成，员工和管理者不再点击按钮生成报告。
+报告采用严格的三级归档链路：
 
-### 日报
-
-- 生成时间：每天 `23:55`，时区 `Asia/Hong_Kong`。
-- 来源数据：当天的 `usage_records`。
-- 生成内容：员工日报和团队日报。
-- 清理规则：报告插入成功后，删除对应原始 `usage_records`。
-
-### 周报
-
-- 生成时间：每周日 `23:55`，时区 `Asia/Hong_Kong`。
-- 周期：自然周，周一到周日。
-- 来源数据：该周日报。
-- 生成内容：员工周报和团队周报。
-- 清理规则：报告插入成功后，删除对应日报。
-
-### 月报
-
-- 生成时间：每月最后一天 `23:55`，时区 `Asia/Hong_Kong`。
-- 来源数据：当月内已经生成的周报。
-- 生成内容：员工月报和团队月报。
-- 清理规则：报告插入成功后，删除对应周报。
-
-月报采用严格层级汇总：月报只汇总已经生成的周报，不回查原始 `usage_records`，也不从日报补齐缺口。因此，当周报边界和自然月边界不完全一致时，月报覆盖范围可能和自然月有少量出入。
-
-### 报告内容
-
-每份报告保存：
-
-- 结构化 `detail_json`：应用名、累计秒数、累计分钟数、占比；
-- LLM 生成的自然语言总结；
-- 报告范围：`EMPLOYEE` 或 `TEAM`；
-- 报告周期：`DAILY`、`WEEKLY` 或 `MONTHLY`；
-- 周期开始/结束日期；
-- 来源层级和来源数量。
-
-LLM 调用发生在数据库事务之外。短事务只负责插入报告并删除来源数据。如果 LLM 生成失败，不删除来源数据，也不插入半成品报告。
-
-### 手动生成入口
-
-旧手动生成接口仅作为兼容路由保留：
-
-- `POST /llm/employee-report`
-- `POST /llm/team-report`
-
-这两个接口仍执行认证和角色校验，但认证通过的用户会收到 `410 Gone`，错误码为 `MANUAL_REPORT_GENERATION_DISABLED`。
-
-## API 概览
-
-除特别说明外，业务 API 都需要有效 token。
-
-### Auth
-
-Login security rules:
-
-- Unknown usernames and incorrect passwords both return `401` with code `INVALID_CREDENTIALS`.
-- Five consecutive failed attempts for the same normalized username lock login for 15 minutes and return `429` with code `LOGIN_LOCKED`.
-- A successful login clears the failed-attempt state.
-- Each account has one active session: a new login revokes all previously issued tokens for that account.
-- Accounts with `mustChangePassword=true` receive a token for the web password-change flow, but the desktop collector refuses to start until the password is changed.
-
-- `POST /auth/login`
-- `GET /auth/me`
-- `POST /auth/change-password`
-- `GET /health`
-
-### Employees
-
-仅管理者可访问：
-
-- `POST /employees`
-- `GET /employees`
-- `GET /employees/{id}`
-- `PUT /employees/{id}`
-- `DELETE /employees/{id}`
-- `POST /employees/{id}/reset-password`
-
-新增员工时会同步创建登录账号，账号名等于员工工号。
-
-### Usage
-
-- `POST /usage-records`：员工上传使用记录。服务端从 token 解析员工身份，不信任客户端传入的员工 ID。
-- `GET /usage-records`：员工查看自己的原始记录列表。
-- `GET /usage-records/view?date=YYYY-MM-DD&page=1&pageSize=10`：员工使用视图，返回实时卡片或覆盖报告。
-- `GET /team-usage-summary`：管理者查看团队聚合摘要。
-
-### Audit Requests
-
-- `POST /detail-access-requests`
-- `GET /detail-access-requests`
-- `GET /detail-access-requests/targeting-me`
-- `PATCH /detail-access-requests/{id}/decision`
-- `GET /detail-access-requests/{id}/usage-records`
-- `GET /detail-access-requests/{id}/usage-view?date=YYYY-MM-DD&page=1&pageSize=10`
-- `GET /detail-access-requests/{id}/access-logs`
-
-### LLM and Report History
-
-- `GET /llm/test-response`：检查 DeepSeek 兼容 LLM 链路。
-- `GET /llm/employee-report-history`：当前员工的报告历史。
-- `GET /llm/team-report-history`：当前管理者可见的团队报告历史。
-- `POST /llm/employee-report`：已禁用的手动生成兼容入口。
-- `POST /llm/team-report`：已禁用的手动生成兼容入口。
-
-LLM 失败会返回明确错误：
-
-```json
-{
-  "code": "LLM_TIMEOUT",
-  "message": "DeepSeek API request timed out"
-}
+```text
+原始使用记录 → 日报 → 周报 → 月报
 ```
 
-```json
-{
-  "code": "LLM_PROVIDER_ERROR",
-  "message": "DeepSeek API request failed"
-}
-```
+默认时区为 `Asia/Hong_Kong`，默认执行时间如下：
 
-## 验证命令
+| 报告 | 默认执行时间 | 数据来源 |
+| --- | --- | --- |
+| 日报 | 每天 23:55 | 当天原始使用记录 |
+| 周报 | 每周日 23:55 | 当周已生成日报 |
+| 月报 | 每月最后一天 23:55 | 当月范围内已生成周报 |
 
-后端测试：
+系统遵循以下归档规则：
+
+- 日报只汇总原始使用记录，周报只汇总已生成日报，月报只汇总已生成周报，不跨层回查或补齐。
+- 报告成功落库后清理对应的上一级来源数据。
+- DeepSeek 调用或归档失败时保留来源数据，不写入半成品报告。
+- 每份报告包含应用名、累计时长、占比以及 AI 生成的中文总结。
+- 团队报告只使用聚合指标，不包含员工姓名、工号、用户名、原始记录或个人拆分数据。
+- 手动生成入口已经下线；通过认证和角色检查后，`POST /llm/employee-report` 与 `POST /llm/team-report` 返回 `410 Gone`。
+
+可选的环境变量覆盖项：
+
+| 环境变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `WORKLENS_REPORTS_DAILY_CRON` | `0 55 23 * * *` | 日报任务 Cron |
+| `WORKLENS_REPORTS_WEEKLY_CRON` | `0 55 23 * * SUN` | 周报任务 Cron |
+| `WORKLENS_REPORTS_MONTHLY_CRON` | `0 55 23 28-31 * *` | 月报候选日期 Cron；代码会再次判断是否为月末 |
+| `WORKLENS_REPORTS_ZONE` | `Asia/Hong_Kong` | 报告任务时区 |
+| `WORKLENS_DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek API 地址 |
+| `WORKLENS_DEEPSEEK_MODEL` | `deepseek-v4-flash` | 报告生成模型 |
+| `WORKLENS_DEEPSEEK_CONNECT_TIMEOUT` | `5s` | 连接超时 |
+| `WORKLENS_DEEPSEEK_READ_TIMEOUT` | `15s` | 读取超时 |
+
+## 主要接口
+
+除登录和健康检查外，业务接口均需要有效的 Bearer token。以下仅列主要用途：
+
+| 用途 | 主要接口 |
+| --- | --- |
+| 健康检查 | `GET /health` |
+| 登录与账号状态 | `POST /auth/login`、`GET /auth/me`、`POST /auth/change-password` |
+| 员工档案与密码重置 | `GET/POST /employees`、`GET/PUT/DELETE /employees/{id}`、`POST /employees/{id}/reset-password` |
+| 使用数据与个人视图 | `POST /usage-records`、`GET /usage-records`、`GET /usage-records/view` |
+| 团队聚合 | `GET /team-usage-summary` |
+| 审计申请与审批 | `POST /detail-access-requests`、`GET /detail-access-requests`、`GET /detail-access-requests/targeting-me`、`PATCH /detail-access-requests/{id}/decision` |
+| 一次性查看与访问记录 | `GET /detail-access-requests/{id}/usage-view`、`GET /detail-access-requests/{id}/access-logs` |
+| 报告历史 | `GET /llm/employee-report-history`、`GET /llm/team-report-history` |
+
+## 测试与验证
+
+项目已完成覆盖登录、权限、审计、采集、断线恢复、前端视图和三级自动报告链路的八阶段真实回归测试。日常验证命令如下。
+
+### 后端测试
+
+后端集成测试会清空其目标数据库中的业务表，严禁直接连接开发或生产数据库。首次测试时，从项目根目录创建独立测试库；如果该库已经存在，可跳过此命令：
 
 ```powershell
-cd worklens_backend
-$env:WORKLENS_DB_HOST='127.0.0.1'
-$env:WORKLENS_DB_PORT='5432'
-$env:WORKLENS_DB_NAME='worklens'
-$env:WORKLENS_DB_USERNAME='worklens'
-$env:WORKLENS_DB_PASSWORD='change-me'
+docker compose exec postgres sh -c 'createdb -U "$POSTGRES_USER" worklens_test'
+```
+
+然后在新的 PowerShell 窗口中，从项目根目录载入 `.env`，把数据库名覆盖为测试库，再执行测试：
+
+```powershell
+Get-Content .env | ForEach-Object {
+  if ($_ -match '^\s*([^#][^=]*)=(.*)$') {
+    Set-Item -Path "Env:$($matches[1].Trim())" -Value $matches[2]
+  }
+}
+$env:WORKLENS_DB_NAME='worklens_test'
+Set-Location worklens_backend
 .\mvnw.cmd test
 ```
 
-前端测试：
+测试完成后请关闭该 PowerShell 窗口；如果要在同一窗口启动开发后端，先重新载入 `.env`，避免继续连接 `worklens_test`。
+
+### 前端测试与构建
+
+在新的 PowerShell 窗口中，从项目根目录执行：
 
 ```powershell
-cd worklens_frontend
+Set-Location worklens_frontend
 npm test
-```
-
-前端构建：
-
-```powershell
-cd worklens_frontend
 npm run build
 ```
 
-桌面客户端测试：
+### 桌面客户端测试
+
+在新的 PowerShell 窗口中，从项目根目录执行：
 
 ```powershell
 python -m unittest discover worklens_desktop_client/tests
@@ -363,8 +272,9 @@ python -m unittest discover worklens_desktop_client/tests
 
 ## 已知限制
 
-- 团队人数过少时，团队聚合数据在数学上可能接近个体明细。当前版本没有实现最小团队人数门槛、小样本隐藏或更强匿名化。
-- 桌面客户端只采集应用名或进程名，不采集窗口标题、浏览器 URL 或域名。
-- 月报采用严格层级汇总，只汇总已生成周报。周报边界和自然月边界不完全一致时，月报覆盖范围可能和自然月有少量出入。
-- 临时密码仅在创建账号或重置密码的响应中返回一次；管理员需通过安全渠道交给对应员工。
-- 当前系统仍是原型，没有包含生产部署加固、组织层级、多级审批或运行监控。
+- 小团队的聚合数据在数学上可能接近个体明细，当前尚未设置最小分组人数阈值。
+- 桌面客户端只采集应用名或进程名，不采集窗口标题、浏览器 URL 或页面内容。
+- 月报严格汇总已生成周报；周报边界与自然月边界不完全一致时，月报覆盖范围可能与自然月略有不同。
+- 新建员工或重置密码时会生成独立的随机临时密码，并仅在接口响应和管理页面中展示一次；在密码安全传递给员工并完成首次改密之前，仍存在短暂的凭证交付窗口风险。
+- `POST /usage-records` 会静默忽略客户端传入的 `employeeId`，记录归属仍以登录身份为准，但接口提示还不够严格。
+- 全新数据库不会自动创建首个管理者账号，当前还缺少安全、可复现的管理员初始化流程。
