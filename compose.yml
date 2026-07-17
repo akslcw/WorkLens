@@ -3,18 +3,69 @@ services:
     image: postgres:16
     container_name: worklens-postgres
     environment:
-      POSTGRES_DB: ${WORKLENS_DB_NAME}
-      POSTGRES_USER: ${WORKLENS_DB_USERNAME}
-      POSTGRES_PASSWORD: ${WORKLENS_DB_PASSWORD}
+      POSTGRES_DB: ${WORKLENS_DB_NAME:-worklens}
+      POSTGRES_USER: ${WORKLENS_DB_USERNAME:-worklens}
+      POSTGRES_PASSWORD: ${WORKLENS_DB_PASSWORD:-change-me}
     ports:
       - "${WORKLENS_DB_PORT:-5432}:5432"
     volumes:
       - worklens-postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${WORKLENS_DB_USERNAME} -d ${WORKLENS_DB_NAME}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    image: worklens-backend:local
+    build:
+      context: ./worklens_backend
+    container_name: worklens-backend
+    environment:
+      WORKLENS_DB_HOST: postgres
+      WORKLENS_DB_PORT: 5432
+      WORKLENS_DB_NAME: ${WORKLENS_DB_NAME:-worklens}
+      WORKLENS_DB_USERNAME: ${WORKLENS_DB_USERNAME:-worklens}
+      WORKLENS_DB_PASSWORD: ${WORKLENS_DB_PASSWORD:-change-me}
+      WORKLENS_DEEPSEEK_API_KEY: ${WORKLENS_DEEPSEEK_API_KEY:-disabled}
+      WORKLENS_DEEPSEEK_BASE_URL: ${WORKLENS_DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      WORKLENS_DEEPSEEK_MODEL: ${WORKLENS_DEEPSEEK_MODEL:-deepseek-v4-flash}
+      WORKLENS_DEEPSEEK_CONNECT_TIMEOUT: ${WORKLENS_DEEPSEEK_CONNECT_TIMEOUT:-5s}
+      WORKLENS_DEEPSEEK_READ_TIMEOUT: ${WORKLENS_DEEPSEEK_READ_TIMEOUT:-15s}
+      WORKLENS_REPORTS_DAILY_CRON: ${WORKLENS_REPORTS_DAILY_CRON:-0 55 23 * * *}
+      WORKLENS_REPORTS_WEEKLY_CRON: ${WORKLENS_REPORTS_WEEKLY_CRON:-0 55 23 * * SUN}
+      WORKLENS_REPORTS_MONTHLY_CRON: ${WORKLENS_REPORTS_MONTHLY_CRON:-0 55 23 28-31 * *}
+      WORKLENS_REPORTS_ZONE: ${WORKLENS_REPORTS_ZONE:-Asia/Hong_Kong}
+    ports:
+      - "${WORKLENS_BACKEND_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/health > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    image: worklens-frontend:local
+    build:
+      context: ./worklens_frontend
+    container_name: worklens-frontend
+    ports:
+      - "${WORKLENS_FRONTEND_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --output-document=- http://127.0.0.1/ > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
 volumes:
   worklens-postgres-data:
