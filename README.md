@@ -64,6 +64,36 @@ PostgreSQL 用户名和密码只在数据卷首次初始化时生效。已有数
 
 > 全新数据库只会初始化表结构，不会自动创建首个管理者账号。当前仓库尚未提供生产级管理员初始化流程；这不影响三项服务启动与健康检查，但完成登录前需要先由部署方预置一个绑定员工档案的 `MANAGER` 账号。
 
+## Windows 桌面客户端（免 Python 运行）
+
+普通员工不需要安装 Python 或任何依赖。推荐从项目的 GitHub Releases 下载 `WorkLens-windows-x64.zip`，完整解压后保留目录结构，不能只复制其中的 `WorkLens.exe`。
+
+首次运行前，打开 exe 同目录的 `config.ini`，填写后端地址：
+
+```ini
+[backend]
+base_url=http://localhost:8080
+```
+
+本机 Docker Compose 演示环境可以保留默认值；连接远程服务时应使用有效的 HTTPS 地址。修改配置后无需重新打包。
+
+员工应先在 Web 端完成首次登录和强制改密，然后双击 `WorkLens.exe`：
+
+1. 在登录窗口输入工号和密码。
+2. 登录成功后程序进入系统托盘，菜单显示运行状态和当前员工。
+3. “开机自动启动”默认关闭；员工可以在托盘菜单中主动开启或再次关闭。客户端不会保存密码，开机启动后仍会显示登录窗口。
+4. 选择“退出”会停止采集并真正退出进程。
+
+离线缓存和运行日志保存在 `%LOCALAPPDATA%\WorkLens`，日志文件为 `%LOCALAPPDATA%\WorkLens\logs\worklens.log`。
+
+维护者需要重新构建客户端时，构建机需要 Python，员工电脑不需要。在项目根目录执行：
+
+```powershell
+.\worklens_desktop_client\build_exe.ps1
+```
+
+输出目录为 `worklens_desktop_client/dist/WorkLens/`，同时生成可直接上传到 GitHub Releases 的 `worklens_desktop_client/dist/WorkLens-windows-x64.zip`。`build/`、`dist/`、exe 和 ZIP 均属于构建产物，已被 Git 忽略。
+
 ## 开发模式（分步启动）
 
 这条路径适合日常开发调试，保留 Spring Boot 和 Vite 的热更新体验。前后端直接运行在宿主机，Docker Compose 只启动 PostgreSQL。
@@ -206,7 +236,10 @@ python -m worklens_desktop_client.run_sync_client --base-url http://localhost:80
 - 连续 5 分钟没有键盘或鼠标操作时，将该时间段记为 `Idle`。
 - 每 5 分钟合并并批量上报采集记录。
 - 网络或服务异常时写入本地 SQLite 缓存，连接恢复后自动补传。
+- 后端地址由 exe 同目录的 `config.ini` 提供，无需重新打包即可修改。
 - 托盘图标展示运行/停止状态、当前登录员工，并提供真实退出操作。
+- 开机自启动默认关闭，员工可以通过托盘菜单自主开启或关闭。
+- SQLite 缓存和滚动运行日志保存在 `%LOCALAPPDATA%\WorkLens`。
 
 ### 前端使用视图
 
@@ -313,10 +346,19 @@ npm run build
 python -m unittest discover worklens_desktop_client/tests
 ```
 
+验证可执行程序构建：
+
+```powershell
+.\worklens_desktop_client\build_exe.ps1
+```
+
+阶段 C 已在清空 Python 相关环境变量、且 `PATH` 中不存在 Python 的隔离目录中运行打包产物，真实完成登录、采样和上报；验证记录和截图位于 `docs/deployment-evidence/phase-c/`。
+
 ## 已知限制
 
 - 小团队的聚合数据在数学上可能接近个体明细，当前尚未设置最小分组人数阈值。
 - 桌面客户端只采集应用名或进程名，不采集窗口标题、浏览器 URL 或页面内容。
+- 当前 Windows exe 未购买代码签名证书，因此首次运行时可能触发 SmartScreen“未知发布者”警告，也可能被部分杀毒软件误报；这是个人项目现阶段的发布取舍，本轮不处理代码签名。
 - 月报严格汇总已生成周报；周报边界与自然月边界不完全一致时，月报覆盖范围可能与自然月略有不同。
 - 新建员工或重置密码时会生成独立的随机临时密码，并仅在接口响应和管理页面中展示一次；在密码安全传递给员工并完成首次改密之前，仍存在短暂的凭证交付窗口风险。
 - `POST /usage-records` 会静默忽略客户端传入的 `employeeId`，记录归属仍以登录身份为准，但接口提示还不够严格。

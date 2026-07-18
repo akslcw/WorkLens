@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import getpass
-from pathlib import Path
 
 from worklens_desktop_client.api_client import LoginError
+from worklens_desktop_client.client_config import ClientConfigError
+from worklens_desktop_client.client_config import load_client_config
+from worklens_desktop_client.runtime_paths import default_cache_path
 from worklens_desktop_client.sync_runtime import SyncRuntime
 from worklens_desktop_client.sync_runtime import SyncRuntimeConfig
 
@@ -15,8 +17,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--base-url",
-        default="http://localhost:8080",
-        help="WorkLens backend base URL. Default: http://localhost:8080",
+        default=None,
+        help="WorkLens backend base URL. Defaults to config.ini next to the application.",
     )
     parser.add_argument(
         "--sample-interval-seconds",
@@ -38,7 +40,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--cache-db",
-        default=str(Path(__file__).resolve().parent / "cache.sqlite3"),
+        default=None,
         help="SQLite file used to cache records when upload fails.",
     )
     parser.add_argument(
@@ -51,15 +53,21 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    try:
+        base_url = args.base_url or load_client_config().base_url
+    except ClientConfigError as error:
+        print(f"Configuration error: {error}")
+        return
+    cache_db = args.cache_db or str(default_cache_path())
     username = input("Username: ").strip()
     password = getpass.getpass("Password: ")
     runtime = SyncRuntime(
         SyncRuntimeConfig(
-            base_url=args.base_url,
+            base_url=base_url,
             sample_interval_seconds=args.sample_interval_seconds,
             idle_threshold_seconds=args.idle_threshold_seconds,
             upload_interval_seconds=args.upload_interval_seconds,
-            cache_db=args.cache_db,
+            cache_db=cache_db,
         )
     )
     try:

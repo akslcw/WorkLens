@@ -9,6 +9,7 @@
 !.env.example
 *.local
 *.log
+!docs/deployment-evidence/phase-c/worklens-runtime.log
 .DS_Store
 Thumbs.db
 
@@ -31,3 +32,5 @@ worklens_frontend/.vscode/
 __pycache__/
 *.sqlite3
 worklens_desktop_client/cache.sqlite3
+worklens_desktop_client/build/
+worklens_desktop_client/dist/

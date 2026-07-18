@@ -1,0 +1,12 @@
+2026-07-18 14:56:01 INFO Starting WorkLens desktop client. base_url=http://localhost:8080 config=C:\Users\29327\AppData\Local\Temp\worklens-c4-runtime\WorkLens\config.ini
+2026-07-18 14:56:01 INFO Login accepted for username=C4-EXE-001 display_name=C4 Clean Environment
+2026-07-18 14:56:01 INFO Login succeeded for C4-EXE-001 (EMPLOYEE).
+2026-07-18 14:56:01 INFO Startup retry complete: uploaded=0, cached=0
+2026-07-18 14:56:01 INFO Running sync client. sample_interval=1s, idle_threshold=300s, upload_interval=5s.
+2026-07-18 14:56:01 INFO [2026-07-18T14:56:01] sampled Idle
+2026-07-18 14:56:02 INFO [2026-07-18T14:56:02] sampled Idle
+2026-07-18 14:56:03 INFO [2026-07-18T14:56:03] sampled Idle
+2026-07-18 14:56:04 INFO [2026-07-18T14:56:04] sampled Idle
+2026-07-18 14:56:05 INFO [2026-07-18T14:56:05] sampled Idle
+2026-07-18 14:56:06 INFO [2026-07-18T14:56:06] sampled Idle
+2026-07-18 14:56:06 INFO [2026-07-18T14:56:06] flush complete: uploaded=1, cached=0

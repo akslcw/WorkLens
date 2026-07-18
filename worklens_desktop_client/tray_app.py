@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import threading
-from pathlib import Path
 from tkinter import Tk, messagebox, simpledialog
 
 import pystray
@@ -11,6 +10,13 @@ from PIL import ImageDraw
 
 from worklens_desktop_client.background_runner import BackgroundRunner
 from worklens_desktop_client.api_client import LoginError
+from worklens_desktop_client.autostart import AutostartError
+from worklens_desktop_client.autostart import is_autostart_enabled
+from worklens_desktop_client.autostart import set_autostart_enabled
+from worklens_desktop_client.client_config import ClientConfigError
+from worklens_desktop_client.client_config import load_client_config
+from worklens_desktop_client.client_logging import create_client_logger
+from worklens_desktop_client.runtime_paths import default_cache_path
 from worklens_desktop_client.sync_runtime import SyncRuntime
 from worklens_desktop_client.sync_runtime import SyncRuntimeConfig
 from worklens_desktop_client.tray_status import format_status_menu_text
@@ -21,13 +27,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run the WorkLens desktop collector in the Windows system tray."
     )
-    parser.add_argument("--base-url", default="http://localhost:8080")
+    parser.add_argument("--base-url", default=None)
     parser.add_argument("--sample-interval-seconds", type=int, default=5)
     parser.add_argument("--idle-threshold-seconds", type=int, default=300)
     parser.add_argument("--upload-interval-seconds", type=int, default=300)
     parser.add_argument(
         "--cache-db",
-        default=str(Path(__file__).resolve().parent / "cache.sqlite3"),
+        default=None,
     )
     parser.add_argument("--username", default=None)
     parser.add_argument("--password", default=None)
@@ -67,8 +73,41 @@ def show_login_error(message: str) -> None:
         root.destroy()
 
 
+def show_configuration_error(message: str) -> None:
+    root = Tk()
+    root.withdraw()
+    try:
+        messagebox.showerror("WorkLens 配置错误", message, parent=root)
+    finally:
+        root.destroy()
+
+
+def show_autostart_error(message: str) -> None:
+    root = Tk()
+    root.withdraw()
+    try:
+        messagebox.showerror("WorkLens 开机自启动", message, parent=root)
+    finally:
+        root.destroy()
+
+
 def main() -> None:
     args = parse_args()
+    logger = create_client_logger()
+    try:
+        if args.base_url:
+            base_url = args.base_url
+            config_path = "<command line>"
+        else:
+            config = load_client_config()
+            base_url = config.base_url
+            config_path = str(config.config_path)
+    except ClientConfigError as error:
+        logger.error("Configuration failed: %s", error)
+        show_configuration_error(str(error))
+        return
+    cache_db = args.cache_db or str(default_cache_path())
+    logger.info("Starting WorkLens desktop client. base_url=%s config=%s", base_url, config_path)
     username, password = prompt_credentials(args.username, args.password)
 
     status_holder = {"value": "STOPPED"}
@@ -89,34 +128,41 @@ def main() -> None:
 
     runtime = SyncRuntime(
         SyncRuntimeConfig(
-            base_url=args.base_url,
+            base_url=base_url,
             sample_interval_seconds=args.sample_interval_seconds,
             idle_threshold_seconds=args.idle_threshold_seconds,
             upload_interval_seconds=args.upload_interval_seconds,
-            cache_db=args.cache_db,
+            cache_db=cache_db,
         ),
+        logger=logger.info,
         on_login=update_login_user,
     )
 
     try:
         login_result = runtime.login(username, password)
     except LoginError as error:
+        logger.warning("Login failed for username=%s: %s", username, error)
         show_login_error(str(error))
         return
 
     display_name_holder["value"] = login_result.display_name
+    logger.info("Login accepted for username=%s display_name=%s", username, login_result.display_name)
 
     def update_status(status: str) -> None:
         status_holder["value"] = status
         refresh_icon()
 
     def worker(stop_event: threading.Event) -> None:
-        runtime.run(
-            username=username,
-            password=password,
-            stop_event=stop_event,
-            login_result=login_result,
-        )
+        try:
+            runtime.run(
+                username=username,
+                password=password,
+                stop_event=stop_event,
+                login_result=login_result,
+            )
+        except Exception:
+            logger.exception("Background collection stopped unexpectedly.")
+            raise
 
     runner = BackgroundRunner(worker=worker, on_status_change=update_status)
 
@@ -124,12 +170,28 @@ def main() -> None:
         return format_status_menu_text(status_holder["value"], display_name_holder["value"])
 
     def quit_app(icon: pystray.Icon, item) -> None:
+        logger.info("Exit requested from tray menu.")
         runner.request_stop()
         runner.join(timeout=10)
         icon.stop()
 
+    def autostart_checked(_) -> bool:
+        try:
+            return is_autostart_enabled()
+        except (AutostartError, OSError):
+            return False
+
+    def toggle_autostart(icon: pystray.Icon, item) -> None:
+        try:
+            set_autostart_enabled(not is_autostart_enabled())
+        except (AutostartError, OSError) as error:
+            show_autostart_error(str(error))
+        icon.update_menu()
+
     menu = pystray.Menu(
         pystray.MenuItem(status_text, None, enabled=False),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("开机自动启动", toggle_autostart, checked=autostart_checked),
         pystray.MenuItem("退出", quit_app),
     )
     icon = pystray.Icon(
